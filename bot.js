@@ -14,7 +14,9 @@ const PORT = process.env.PORT || 3000;
 let ALLOWED_CHANNEL_ID = '1465302757693980788';
 
 let config = {
-    allowedRoles: [],
+    gameManagerRoles: [],   
+    botAdminRoles: [],      
+    fullAdminRoles: [],     
     allowEveryone: false
 };
 
@@ -56,10 +58,33 @@ function saveConfig() {
     }
 }
 
-function hasPermission(member) {
-    if (member.guild.ownerId === member.id) return true;
+function isServerOwner(member) {
+    return member.guild.ownerId === member.id;
+}
+
+function hasGameManagerPermission(member) {
+    if (isServerOwner(member)) return true;
     if (config.allowEveryone) return true;
-    return member.roles.cache.some(role => config.allowedRoles.includes(role.id));
+    return member.roles.cache.some(role => 
+        config.gameManagerRoles.includes(role.id) || 
+        config.botAdminRoles.includes(role.id) || 
+        config.fullAdminRoles.includes(role.id)
+    );
+}
+
+function hasBotAdminPermission(member) {
+    if (isServerOwner(member)) return true;
+    if (config.allowEveryone) return true;
+    return member.roles.cache.some(role => 
+        config.botAdminRoles.includes(role.id) || 
+        config.fullAdminRoles.includes(role.id)
+    );
+}
+
+function hasFullAdminPermission(member) {
+    if (isServerOwner(member)) return true;
+    if (config.allowEveryone) return true;
+    return member.roles.cache.some(role => config.fullAdminRoles.includes(role.id));
 }
 
 function extractGameId(url) {
@@ -111,20 +136,24 @@ client.on('interactionCreate', async interaction => {
     }
 
     const { commandName } = interaction;
-
-    const gameManagementCommands = ['addgame', 'removegame', 'cleargames'];
-    if (gameManagementCommands.includes(commandName) && !hasPermission(interaction.member)) {
+    
+    if (['addgame', 'removegame'].includes(commandName) && !hasGameManagerPermission(interaction.member)) {
         return interaction.reply({
-            content: '❌ You don\'t have permission to use this command!\n💡 Ask an administrator to add your role using `/setroles`',
+            content: '❌ You need **Game Manager** permission or higher!\n💡 Ask an admin to add your role using `/setroles`',
             ephemeral: true
         });
     }
 
-    // Kanal ve rol yönetimi için yetki kontrolü (yetkili roller yapabilir)
-    const settingsCommands = ['setchannel', 'setroles'];
-    if (settingsCommands.includes(commandName) && !hasPermission(interaction.member)) {
+    if (['cleargames', 'setchannel'].includes(commandName) && !hasBotAdminPermission(interaction.member)) {
         return interaction.reply({
-            content: '❌ You don\'t have permission to manage bot settings!\n💡 Ask an administrator to add your role using `/setroles`',
+            content: '❌ You need **Bot Admin** permission or higher!\n💡 Ask a full admin to add your role using `/setroles`',
+            ephemeral: true
+        });
+    }
+
+    if (commandName === 'setroles' && !hasFullAdminPermission(interaction.member)) {
+        return interaction.reply({
+            content: '❌ You need **Full Admin** permission!\n💡 Only full admins and server owner can manage roles.',
             ephemeral: true
         });
     }
@@ -143,18 +172,23 @@ client.on('interactionCreate', async interaction => {
             .setDescription('Here are all available commands:')
             .addFields(
                 {
-                    name: '🎮 Game Management',
-                    value: '`/addgame` - Add a game to the hub\n`/removegame` - Remove a game\n`/listgames` - List all games\n`/cleargames` - Clear all games',
+                    name: '🎮 Game Management (Game Manager+)',
+                    value: '`/addgame` - Add a game to the hub\n`/removegame` - Remove a game\n`/listgames` - List all games',
                     inline: false
                 },
                 {
-                    name: '📊 Information',
+                    name: '🔧 Bot Management (Bot Admin+)',
+                    value: '`/cleargames` - Clear all games\n`/setchannel` - Change bot command channel',
+                    inline: false
+                },
+                {
+                    name: '👑 Full Admin (Full Admin Only)',
+                    value: '`/setroles` - Manage role permissions',
+                    inline: false
+                },
+                {
+                    name: '📊 Information (Everyone)',
                     value: '`/stats` - Show hub statistics\n`/help` - Show this help message',
-                    inline: false
-                },
-                {
-                    name: '🔒 Settings Management (Authorized Roles)',
-                    value: '`/setroles` - Manage which roles can use the bot\n`/setchannel` - Change bot command channel',
                     inline: false
                 },
                 {
@@ -251,68 +285,112 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'setroles') {
+        const level = interaction.options.getString('level');
         const action = interaction.options.getString('action');
+        
+        let targetArray;
+        let levelName;
+        
+        if (level === 'gamemanager') {
+            targetArray = config.gameManagerRoles;
+            levelName = 'Game Manager';
+        } else if (level === 'botadmin') {
+            targetArray = config.botAdminRoles;
+            levelName = 'Bot Admin';
+        } else if (level === 'fulladmin') {
+            targetArray = config.fullAdminRoles;
+            levelName = 'Full Admin';
+        }
         
         if (action === 'add') {
             const role = interaction.options.getRole('role');
             
-            if (config.allowedRoles.includes(role.id)) {
+            if (targetArray.includes(role.id)) {
                 return interaction.reply({
-                    content: `❌ Role ${role.name} already has permission!`,
+                    content: `❌ Role ${role.name} already has ${levelName} permission!`,
                     ephemeral: true
                 });
             }
             
-            config.allowedRoles.push(role.id);
+            targetArray.push(role.id);
             saveConfig();
             
-            return interaction.reply(`✅ Added ${role.name} to authorized roles! They can now manage games, channel, and roles.`);
+            const permissions = {
+                gamemanager: 'Add/Remove games',
+                botadmin: 'Add/Remove games, Clear games, Change channel',
+                fulladmin: 'All permissions including role management'
+            };
+            
+            return interaction.reply(`✅ Added ${role.name} as **${levelName}**!\n📋 Permissions: ${permissions[level]}`);
         }
         
         else if (action === 'remove') {
             const role = interaction.options.getRole('role');
             
-            const index = config.allowedRoles.indexOf(role.id);
+            const index = targetArray.indexOf(role.id);
             if (index === -1) {
                 return interaction.reply({
-                    content: `❌ Role ${role.name} doesn't have permission!`,
+                    content: `❌ Role ${role.name} doesn't have ${levelName} permission!`,
                     ephemeral: true
                 });
             }
             
-            config.allowedRoles.splice(index, 1);
+            targetArray.splice(index, 1);
             saveConfig();
             
-            return interaction.reply(`✅ Removed ${role.name} from authorized roles!`);
+            return interaction.reply(`✅ Removed ${role.name} from **${levelName}**!`);
         }
         
         else if (action === 'list') {
-            if (config.allowEveryone) {
-                return interaction.reply('📋 **Everyone** can manage the bot!');
-            }
-            
-            if (config.allowedRoles.length === 0) {
-                return interaction.reply('📋 No roles have permission yet! Only server owner can manage the bot.');
-            }
-            
-            const rolesList = config.allowedRoles
+            const embed = new EmbedBuilder()
+                .setColor(0x0099FF)
+                .setTitle('🔒 Role Permissions')
+                .setTimestamp();
+
+            const gameManagerList = config.gameManagerRoles
                 .map(roleId => {
                     const role = interaction.guild.roles.cache.get(roleId);
                     return role ? `• ${role.name}` : `• Unknown Role (${roleId})`;
                 })
-                .join('\n');
+                .join('\n') || 'None';
             
-            const embed = new EmbedBuilder()
-                .setColor(0x0099FF)
-                .setTitle('🔒 Authorized Roles')
-                .setDescription(rolesList)
-                .addFields({
-                    name: '🔑 Permissions',
-                    value: '• Manage games (add/remove/clear)\n• Change bot channel\n• Manage authorized roles',
-                    inline: false
+            const botAdminList = config.botAdminRoles
+                .map(roleId => {
+                    const role = interaction.guild.roles.cache.get(roleId);
+                    return role ? `• ${role.name}` : `• Unknown Role (${roleId})`;
                 })
-                .setFooter({ text: 'Server owner always has full permission' })
-                .setTimestamp();
+                .join('\n') || 'None';
+            
+            const fullAdminList = config.fullAdminRoles
+                .map(roleId => {
+                    const role = interaction.guild.roles.cache.get(roleId);
+                    return role ? `• ${role.name}` : `• Unknown Role (${roleId})`;
+                })
+                .join('\n') || 'None';
+
+            embed.addFields(
+                {
+                    name: '🎮 Game Managers',
+                    value: gameManagerList,
+                    inline: false
+                },
+                {
+                    name: '🔧 Bot Admins',
+                    value: botAdminList,
+                    inline: false
+                },
+                {
+                    name: '👑 Full Admins',
+                    value: fullAdminList,
+                    inline: false
+                }
+            );
+
+            if (config.allowEveryone) {
+                embed.setDescription('⚠️ **Everyone mode is enabled!** All members have full permissions.');
+            }
+
+            embed.setFooter({ text: 'Server owner always has full permission' });
             
             return interaction.reply({ embeds: [embed] });
         }
@@ -323,9 +401,9 @@ client.on('interactionCreate', async interaction => {
             saveConfig();
             
             if (enable) {
-                return interaction.reply('✅ Everyone can now manage the bot (games, channel, roles)!');
+                return interaction.reply('✅ **Everyone mode enabled!** All members can now use all bot commands.');
             } else {
-                return interaction.reply('✅ Restricted to authorized roles only!');
+                return interaction.reply('✅ **Everyone mode disabled!** Bot is now restricted to assigned roles.');
             }
         }
     }
@@ -476,4 +554,3 @@ app.listen(PORT, () => {
         process.exit(1);
     });
 });
-
