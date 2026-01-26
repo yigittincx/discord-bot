@@ -9,8 +9,9 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
+// Railway'den environment variable olarak al
 const TOKEN = process.env.DISCORD_TOKEN;
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 let ALLOWED_CHANNEL_ID = '1465302757693980788';
 
 let config = {
@@ -408,7 +409,7 @@ client.on('interactionCreate', async interaction => {
 
     else if (commandName === 'listgames') {
         if (games.length === 0) {
-            return interaction.reply('📭 No games in the hub yet!');
+            return interaction.reply('🔭 No games in the hub yet!');
         }
 
         const embed = new EmbedBuilder()
@@ -435,7 +436,7 @@ client.on('interactionCreate', async interaction => {
     else if (commandName === 'cleargames') {
         if (games.length === 0) {
             return interaction.reply({
-                content: '📭 No games to clear!',
+                content: '🔭 No games to clear!',
                 ephemeral: true
             });
         }
@@ -463,9 +464,18 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'online', gameCount: games.length });
 });
 
+// Önce Express server'ı başlat, sonra Discord'a bağlan
 app.listen(PORT, () => {
     console.log(`🌐 API server running on port ${PORT}`);
+    
+    // Token kontrolü
+    if (!TOKEN) {
+        console.error('❌ DISCORD_TOKEN environment variable not found!');
+        process.exit(1);
+    }
+    
+    client.login(TOKEN).catch(err => {
+        console.error('❌ Failed to login:', err);
+        process.exit(1);
+    });
 });
-
-
-client.login(TOKEN);
