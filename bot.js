@@ -9,7 +9,7 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
-// CORS için
+
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET');
@@ -66,7 +66,7 @@ async function getGameInfo(gameId) {
         
         const universeId = universeData.universeId;
         
-       
+        
         const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         const data = await response.json();
         
