@@ -1,0 +1,21 @@
+{
+  "name": "roblox-teleport-hub-bot",
+  "version": "1.0.0",
+  "description": "Discord bot to manage Roblox teleport hub games",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "deploy": "node deploy-commands.js"
+  },
+  "keywords": [
+    "discord",
+    "roblox",
+    "bot"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.11.0",
+    "express": "^4.18.2"
+  }
+}
