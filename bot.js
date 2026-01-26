@@ -9,7 +9,7 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
-const TOKEN = 'MTQ2NTMwMjIzMjAwMTE1MTE3MA.GMmIOQ.K5ZtvJYfuhl77ZdanSZQRJBHuGYWKTy8uRQV28';
+const TOKEN = process.env.DISCORD_TOKEN;
 const PORT = 3000;
 let ALLOWED_CHANNEL_ID = '1465302757693980788';
 
@@ -466,5 +466,6 @@ app.get('/api/health', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🌐 API server running on port ${PORT}`);
 });
+
 
 client.login(TOKEN);
