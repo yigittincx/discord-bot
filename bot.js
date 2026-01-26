@@ -9,16 +9,9 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
-// Environment variables for Railway
 const TOKEN = process.env.DISCORD_TOKEN;
 const PORT = process.env.PORT || 3000;
-let ALLOWED_CHANNEL_ID = process.env.ALLOWED_CHANNEL_ID || '1465302757693980788';
-
-// Token kontrolü
-if (!TOKEN) {
-    console.error('❌ DISCORD_TOKEN environment variable not found!');
-    process.exit(1);
-}
+let ALLOWED_CHANNEL_ID = '1465302757693980788';
 
 let config = {
     allowedRoles: [],
@@ -234,7 +227,7 @@ client.on('interactionCreate', async interaction => {
             const oldestHours = Math.floor((oldestDuration % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             
             embed.addFields({
-                name: '⌛ Longest Game in Hub',
+                name: '⏳ Longest Game in Hub',
                 value: `**${oldestGame.name}**\nIn hub for: **${oldestDays}d ${oldestHours}h**`,
                 inline: true
             });
@@ -455,15 +448,6 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Error handling
-client.on('error', error => {
-    console.error('Discord client error:', error);
-});
-
-process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
-});
-
 app.get('/api/games', (req, res) => {
     res.json({
         success: true,
@@ -476,25 +460,19 @@ app.get('/api/games', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'online', 
-        gameCount: games.length,
-        botStatus: client.user ? 'connected' : 'disconnected'
-    });
+    res.json({ status: 'online', gameCount: games.length });
 });
 
-app.get('/', (req, res) => {
-    res.json({ 
-        message: 'Roblox Teleport Hub Bot API',
-        status: 'running'
-    });
-});
+if (!TOKEN) {
+    console.error('❌ DISCORD_TOKEN environment variable not found!');
+    process.exit(1);
+}
 
 app.listen(PORT, () => {
     console.log(`🌐 API server running on port ${PORT}`);
-});
-
-client.login(TOKEN).catch(error => {
-    console.error('❌ Failed to login:', error);
-    process.exit(1);
+    
+    client.login(TOKEN).catch(err => {
+        console.error('❌ Failed to login:', err);
+        process.exit(1);
+    });
 });
