@@ -1,13 +1,8 @@
 const { REST, Routes } = require('discord.js');
 
 const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID || '1465302232001151170';
-const GUILD_ID = process.env.GUILD_ID || '1465302756976758786';
-
-if (!TOKEN) {
-    console.error('❌ DISCORD_TOKEN environment variable not found!');
-    process.exit(1);
-}
+const CLIENT_ID = '1465302232001151170';
+const GUILD_ID = '1465302756976758786';
 
 const commands = [
     {
@@ -88,11 +83,17 @@ const commands = [
     }
 ];
 
+if (!TOKEN) {
+    console.error('❌ DISCORD_TOKEN environment variable not found!');
+    console.error('💡 Set DISCORD_TOKEN in your environment');
+    process.exit(1);
+}
+
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
     try {
-        console.log('📝 Registering slash commands...');
+        console.log('🔄 Registering slash commands...');
 
         if (GUILD_ID) {
             await rest.put(
