@@ -1,6 +1,7 @@
 const { REST, Routes } = require('discord.js');
 
-const TOKEN = 'MTQ2NTMwMjIzMjAwMTE1MTE3MA.GMmIOQ.K5ZtvJYfuhl77ZdanSZQRJBHuGYWKTy8uRQV28';
+// Environment variable'dan al
+const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = '1465302232001151170';
 const GUILD_ID = '1465302756976758786';
 
@@ -83,6 +84,13 @@ const commands = [
     }
 ];
 
+// Token kontrolü
+if (!TOKEN) {
+    console.error('❌ DISCORD_TOKEN environment variable not found!');
+    console.error('💡 Set DISCORD_TOKEN in your environment or Railway variables');
+    process.exit(1);
+}
+
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
@@ -104,5 +112,6 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
         }
     } catch (error) {
         console.error('❌ Error registering commands:', error);
+        process.exit(1);
     }
 })();
