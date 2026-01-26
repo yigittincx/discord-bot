@@ -56,7 +56,18 @@ function extractGameId(url) {
 
 async function getGameInfo(gameId) {
     try {
-        const response = await fetch(`https://games.roproxy.com/v1/games?universeIds=${gameId}`);
+        
+        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        const universeData = await universeResponse.json();
+        
+        if (!universeData.universeId) {
+            throw new Error('Could not get universe ID');
+        }
+        
+        const universeId = universeData.universeId;
+        
+       
+        const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         const data = await response.json();
         
         if (data.data && data.data.length > 0) {
