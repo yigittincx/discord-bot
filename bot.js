@@ -112,7 +112,6 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    // Oyun yönetimi komutları için yetki kontrolü
     const gameManagementCommands = ['addgame', 'removegame', 'cleargames'];
     if (gameManagementCommands.includes(commandName) && !hasPermission(interaction.member)) {
         return interaction.reply({
@@ -477,3 +476,4 @@ app.listen(PORT, () => {
         process.exit(1);
     });
 });
+
