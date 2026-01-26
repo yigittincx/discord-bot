@@ -7,7 +7,7 @@ const GUILD_ID = '1465302756976758786';
 const commands = [
     {
         name: 'addgame',
-        description: 'Add a game to the teleport hub',
+        description: 'Add a game to the teleport hub (Game Manager+)',
         options: [{
             name: 'url',
             description: 'Roblox game URL or ID',
@@ -17,7 +17,7 @@ const commands = [
     },
     {
         name: 'removegame',
-        description: 'Remove a game from the teleport hub',
+        description: 'Remove a game from the teleport hub (Game Manager+)',
         options: [{
             name: 'id',
             description: 'Game ID to remove',
@@ -27,16 +27,27 @@ const commands = [
     },
     {
         name: 'listgames',
-        description: 'List all games in the teleport hub'
+        description: 'List all games in the teleport hub (Everyone)'
     },
     {
         name: 'cleargames',
-        description: 'Clear all games from the teleport hub'
+        description: 'Clear all games from the teleport hub (Bot Admin+)'
     },
     {
         name: 'setroles',
-        description: 'Manage which roles can add/remove games (Admin only)',
+        description: 'Manage role permissions (Full Admin only)',
         options: [
+            {
+                name: 'level',
+                description: 'Permission level',
+                type: 3,
+                required: true,
+                choices: [
+                    { name: '🎮 Game Manager (Add/Remove games)', value: 'gamemanager' },
+                    { name: '🔧 Bot Admin (Games + Channel + Clear)', value: 'botadmin' },
+                    { name: '👑 Full Admin (Everything)', value: 'fulladmin' }
+                ]
+            },
             {
                 name: 'action',
                 description: 'Action to perform',
@@ -45,8 +56,8 @@ const commands = [
                 choices: [
                     { name: 'Add Role', value: 'add' },
                     { name: 'Remove Role', value: 'remove' },
-                    { name: 'List Roles', value: 'list' },
-                    { name: 'Allow Everyone', value: 'everyone' }
+                    { name: 'List All Roles', value: 'list' },
+                    { name: 'Toggle Everyone Mode', value: 'everyone' }
                 ]
             },
             {
@@ -57,7 +68,7 @@ const commands = [
             },
             {
                 name: 'enable',
-                description: 'Enable/disable everyone permission',
+                description: 'Enable/disable everyone mode',
                 type: 5,
                 required: false
             }
@@ -65,15 +76,15 @@ const commands = [
     },
     {
         name: 'help',
-        description: 'Show all available commands'
+        description: 'Show all available commands (Everyone)'
     },
     {
         name: 'stats',
-        description: 'Show hub statistics and bot uptime'
+        description: 'Show hub statistics (Everyone)'
     },
     {
         name: 'setchannel',
-        description: 'Set the channel where bot commands work (Admin only)',
+        description: 'Set the channel where bot commands work (Bot Admin+)',
         options: [{
             name: 'channel',
             description: 'The channel to use',
