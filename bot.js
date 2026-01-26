@@ -112,6 +112,7 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
+    // Oyun yönetimi komutları için yetki kontrolü
     const gameManagementCommands = ['addgame', 'removegame', 'cleargames'];
     if (gameManagementCommands.includes(commandName) && !hasPermission(interaction.member)) {
         return interaction.reply({
@@ -120,14 +121,16 @@ client.on('interactionCreate', async interaction => {
         });
     }
 
-    if (commandName === 'setchannel') {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({
-                content: '❌ Only administrators can change the channel!',
-                ephemeral: true
-            });
-        }
+    // Kanal ve rol yönetimi için yetki kontrolü (yetkili roller yapabilir)
+    const settingsCommands = ['setchannel', 'setroles'];
+    if (settingsCommands.includes(commandName) && !hasPermission(interaction.member)) {
+        return interaction.reply({
+            content: '❌ You don\'t have permission to manage bot settings!\n💡 Ask an administrator to add your role using `/setroles`',
+            ephemeral: true
+        });
+    }
 
+    if (commandName === 'setchannel') {
         const channel = interaction.options.getChannel('channel');
         ALLOWED_CHANNEL_ID = channel.id;
 
@@ -151,7 +154,7 @@ client.on('interactionCreate', async interaction => {
                     inline: false
                 },
                 {
-                    name: '🔒 Permission Management (Admin Only)',
+                    name: '🔒 Settings Management (Authorized Roles)',
                     value: '`/setroles` - Manage which roles can use the bot\n`/setchannel` - Change bot command channel',
                     inline: false
                 },
@@ -249,13 +252,6 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'setroles') {
-        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({
-                content: '❌ Only administrators can manage permissions!',
-                ephemeral: true
-            });
-        }
-
         const action = interaction.options.getString('action');
         
         if (action === 'add') {
@@ -271,7 +267,7 @@ client.on('interactionCreate', async interaction => {
             config.allowedRoles.push(role.id);
             saveConfig();
             
-            return interaction.reply(`✅ Added ${role.name} to allowed roles!`);
+            return interaction.reply(`✅ Added ${role.name} to authorized roles! They can now manage games, channel, and roles.`);
         }
         
         else if (action === 'remove') {
@@ -288,16 +284,16 @@ client.on('interactionCreate', async interaction => {
             config.allowedRoles.splice(index, 1);
             saveConfig();
             
-            return interaction.reply(`✅ Removed ${role.name} from allowed roles!`);
+            return interaction.reply(`✅ Removed ${role.name} from authorized roles!`);
         }
         
         else if (action === 'list') {
             if (config.allowEveryone) {
-                return interaction.reply('📋 **Everyone** can manage games!');
+                return interaction.reply('📋 **Everyone** can manage the bot!');
             }
             
             if (config.allowedRoles.length === 0) {
-                return interaction.reply('📋 No roles have permission yet! Only server owner can manage games.');
+                return interaction.reply('📋 No roles have permission yet! Only server owner can manage the bot.');
             }
             
             const rolesList = config.allowedRoles
@@ -309,9 +305,14 @@ client.on('interactionCreate', async interaction => {
             
             const embed = new EmbedBuilder()
                 .setColor(0x0099FF)
-                .setTitle('🔒 Allowed Roles')
+                .setTitle('🔒 Authorized Roles')
                 .setDescription(rolesList)
-                .setFooter({ text: 'Server owner always has permission' })
+                .addFields({
+                    name: '🔑 Permissions',
+                    value: '• Manage games (add/remove/clear)\n• Change bot channel\n• Manage authorized roles',
+                    inline: false
+                })
+                .setFooter({ text: 'Server owner always has full permission' })
                 .setTimestamp();
             
             return interaction.reply({ embeds: [embed] });
@@ -323,9 +324,9 @@ client.on('interactionCreate', async interaction => {
             saveConfig();
             
             if (enable) {
-                return interaction.reply('✅ Everyone can now manage games!');
+                return interaction.reply('✅ Everyone can now manage the bot (games, channel, roles)!');
             } else {
-                return interaction.reply('✅ Restricted to allowed roles only!');
+                return interaction.reply('✅ Restricted to authorized roles only!');
             }
         }
     }
