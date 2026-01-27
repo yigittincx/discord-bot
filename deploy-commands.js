@@ -1,4 +1,4 @@
-const { REST, Routes } = require('discord.js');
+const { REST, Routes } = require('discord.js');const { REST, Routes } = require('discord.js');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = '1465302232001151170';
@@ -8,12 +8,20 @@ const commands = [
     {
         name: 'addgame',
         description: 'Add a game to the hub',
-        options: [{
-            name: 'url',
-            description: 'Roblox game URL or ID',
-            type: 3,
-            required: true
-        }]
+        options: [
+            {
+                name: 'url',
+                description: 'Roblox game URL or ID',
+                type: 3,
+                required: true
+            },
+            {
+                name: 'name',
+                description: 'Game name (for private games)',
+                type: 3,
+                required: false
+            }
+        ]
     },
     {
         name: 'removegame',
