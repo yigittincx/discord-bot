@@ -23,7 +23,8 @@ let config = {
     allowedRoles: [],
     allowEveryone: false,
     allowedChannel: null,
-    botAdmins: []
+    botAdmins: [],
+    leaderUserId: "1308721547740975124" // ✅ Lider ID'si buraya eklendi
 };
 
 let games = [];
@@ -162,6 +163,7 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
     // Button tıklamaları için
     if (interaction.isButton()) {
+        // ✅ CUSTOMIZE BUTTON
         if (interaction.customId.startsWith('customize_')) {
             const gameId = interaction.customId.split('_')[1];
             
@@ -174,7 +176,8 @@ client.on('interactionCreate', async interaction => {
                 });
             }
             
-            if (game.addedBy !== interaction.user.tag && !isBotAdmin(interaction.member)) {
+            // ✅ SADECE User ID ile kontrol - oyunu ekleyen kişi
+            if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
                     content: '❌ You can only customize your own games!',
                     ephemeral: true
@@ -210,6 +213,63 @@ client.on('interactionCreate', async interaction => {
             modal.addComponents(nameRow, descRow);
             
             await interaction.showModal(modal);
+        }
+        
+        // ✅ SEND LINK BUTTON
+        if (interaction.customId.startsWith('sendlink_')) {
+            const gameId = interaction.customId.split('_')[1];
+            
+            const game = games.find(g => g.id === gameId);
+            
+            if (!game) {
+                return interaction.reply({
+                    content: '❌ Game not found!',
+                    ephemeral: true
+                });
+            }
+            
+            // ✅ SADECE User ID ile kontrol - oyunu ekleyen kişi
+            if (game.addedByUserId !== interaction.user.id) {
+                return interaction.reply({
+                    content: '❌ You can only send links for your own games!',
+                    ephemeral: true
+                });
+            }
+            
+            await interaction.deferReply({ ephemeral: true });
+            
+            try {
+                const leader = await client.users.fetch(config.leaderUserId);
+                const gameLink = `https://www.roblox.com/games/${gameId}`;
+                
+                const dmEmbed = new EmbedBuilder()
+                    .setColor(0x00FF00)
+                    .setTitle('🎮 New Game Link from Hub!')
+                    .addFields(
+                        { name: '🎮 Game Name', value: game.customName || game.name, inline: false },
+                        { name: '🆔 Game ID', value: gameId, inline: true },
+                        { name: '👤 Sent By', value: interaction.user.tag, inline: true },
+                        { name: '👥 Players', value: `${game.playing || 0}/${game.maxPlayers || 0}`, inline: true },
+                        { name: '🔗 Game Link', value: gameLink, inline: false }
+                    )
+                    .setFooter({ text: 'Retreat Gateway - Game Link Request' })
+                    .setTimestamp();
+                
+                if (game.customDescription) {
+                    dmEmbed.addFields({ name: '📄 Description', value: game.customDescription, inline: false });
+                }
+                
+                await leader.send({ embeds: [dmEmbed] });
+                
+                await interaction.editReply({
+                    content: `✅ Game link sent to <@${config.leaderUserId}> successfully!`
+                });
+            } catch (error) {
+                console.error('Failed to send DM to leader:', error);
+                await interaction.editReply({
+                    content: '❌ Failed to send link! The leader might have DMs disabled or the user was not found.',
+                });
+            }
         }
     }
     
@@ -320,8 +380,8 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // Sadece oyunu ekleyen kişi veya bot admin customize edebilir
-        if (game.addedBy !== interaction.user.tag && !isBotAdmin(interaction.member)) {
+        // ✅ SADECE User ID ile kontrol
+        if (game.addedByUserId !== interaction.user.id) {
             return interaction.reply({
                 content: `❌ You can only customize your own games!\nThis game was added by **${game.addedBy}**`,
                 ephemeral: true
@@ -599,6 +659,7 @@ client.on('interactionCreate', async interaction => {
         games.push({
             ...gameInfo,
             addedBy: interaction.user.tag,
+            addedByUserId: interaction.user.id, // ✅ User ID'yi kaydet
             addedAt: Date.now(),
             customName: null,
             customDescription: null
@@ -615,8 +676,8 @@ client.on('interactionCreate', async interaction => {
                 { name: '👤 Creator', value: gameInfo.creator, inline: true },
                 { name: '👥 Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
             )
-            .setDescription('**Would you like to customize this game?**\nClick the button below to add a custom name and description!')
-            .setFooter({ text: 'You can customize it anytime!' })
+            .setDescription('**Customize or share this game!**\nUse the buttons below:')
+            .setFooter({ text: 'Only you can use these buttons!' })
             .setTimestamp();
 
         const customizeButton = new ButtonBuilder()
@@ -625,7 +686,13 @@ client.on('interactionCreate', async interaction => {
             .setStyle(ButtonStyle.Primary)
             .setEmoji('🎨');
 
-        const row = new ActionRowBuilder().addComponents(customizeButton);
+        const sendLinkButton = new ButtonBuilder()
+            .setCustomId(`sendlink_${gameId}`)
+            .setLabel('📤 Send Link to Leader')
+            .setStyle(ButtonStyle.Success)
+            .setEmoji('🔗');
+
+        const row = new ActionRowBuilder().addComponents(customizeButton, sendLinkButton);
 
         await interaction.editReply({ embeds: [embed], components: [row] });
     }
@@ -643,7 +710,8 @@ client.on('interactionCreate', async interaction => {
 
         const game = games[gameIndex];
         
-        if (game.addedBy !== interaction.user.tag && !isBotAdmin(interaction.member)) {
+        // ✅ User ID ile kontrol - admin de silebilir
+        if (game.addedByUserId !== interaction.user.id && !isBotAdmin(interaction.member)) {
             return interaction.reply({
                 content: `❌ You can only remove your own games!\nThis was added by **${game.addedBy}**`,
                 ephemeral: true
@@ -723,10 +791,10 @@ app.get('/api/games', async (req, res) => {
             const stats = await getGameStats(g.id);
             return {
                 id: g.id,
-                name: g.customName || g.name, // Custom name varsa onu göster
+                name: g.customName || g.name,
                 originalName: g.name,
                 creator: g.creator,
-                description: g.customDescription || null, // Custom description ekle
+                description: g.customDescription || null,
                 uptime: Date.now() - g.addedAt,
                 uptimeFormatted: formatUptime(Date.now() - g.addedAt),
                 playing: stats.playing,
