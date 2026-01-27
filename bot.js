@@ -22,7 +22,8 @@ const PORT = process.env.PORT || 3000;
 let config = {
     allowedRoles: [],
     allowEveryone: false,
-    allowedChannel: null
+    allowedChannel: null,
+    botAdmins: []
 };
 
 let games = [];
@@ -63,8 +64,13 @@ function saveConfig() {
     }
 }
 
-function hasPermission(member) {
+function isBotAdmin(member) {
     if (member.guild.ownerId === member.id) return true;
+    return config.botAdmins.includes(member.id);
+}
+
+function hasPermission(member) {
+    if (isBotAdmin(member)) return true;
     if (config.allowEveryone) return true;
     return member.roles.cache.some(role => config.allowedRoles.includes(role.id));
 }
@@ -151,11 +157,71 @@ client.on('interactionCreate', async interaction => {
         });
     }
     
-    if ((commandName === 'setroles' || commandName === 'setchannel') && !interaction.member.permissions.has('Administrator')) {
+    const adminCommands = ['setroles', 'setchannel', 'setadmin'];
+    if (adminCommands.includes(commandName) && !isBotAdmin(interaction.member)) {
         return interaction.reply({
-            content: '❌ Only administrators can manage permissions!',
+            content: '❌ Only bot admins can use this command!',
             ephemeral: true
         });
+    }
+
+    if (commandName === 'setadmin') {
+        const action = interaction.options.getString('action');
+        
+        if (action === 'add') {
+            const user = interaction.options.getUser('user');
+            
+            if (config.botAdmins.includes(user.id)) {
+                return interaction.reply({
+                    content: `❌ ${user.tag} is already a bot admin!`,
+                    ephemeral: true
+                });
+            }
+            
+            config.botAdmins.push(user.id);
+            saveConfig();
+            
+            return interaction.reply(`✅ Added ${user.tag} as bot admin!`);
+        }
+        
+        else if (action === 'remove') {
+            const user = interaction.options.getUser('user');
+            
+            const index = config.botAdmins.indexOf(user.id);
+            if (index === -1) {
+                return interaction.reply({
+                    content: `❌ ${user.tag} is not a bot admin!`,
+                    ephemeral: true
+                });
+            }
+            
+            config.botAdmins.splice(index, 1);
+            saveConfig();
+            
+            return interaction.reply(`✅ Removed ${user.tag} from bot admins!`);
+        }
+        
+        else if (action === 'list') {
+            if (config.botAdmins.length === 0) {
+                return interaction.reply('📋 No bot admins set! Only server owner has full access.');
+            }
+            
+            const adminsList = config.botAdmins
+                .map(userId => {
+                    const user = interaction.guild.members.cache.get(userId);
+                    return user ? `• ${user.user.tag}` : `• Unknown User`;
+                })
+                .join('\n');
+            
+            const embed = new EmbedBuilder()
+                .setColor(0xFF5555)
+                .setTitle('👑 Bot Admins')
+                .setDescription(adminsList)
+                .setFooter({ text: 'Server owner always has full access' })
+                .setTimestamp();
+            
+            return interaction.reply({ embeds: [embed] });
+        }
     }
 
     if (commandName === 'setchannel') {
@@ -189,7 +255,7 @@ client.on('interactionCreate', async interaction => {
                 },
                 {
                     name: '🔒 Admin',
-                    value: '`/setroles` - Manage permissions\n`/setchannel` - Set bot channel',
+                    value: '`/setadmin` - Manage bot admins\n`/setroles` - Manage permissions\n`/setchannel` - Set bot channel',
                     inline: false
                 }
             )
@@ -366,7 +432,7 @@ client.on('interactionCreate', async interaction => {
 
         const game = games[gameIndex];
         
-        if (game.addedBy !== interaction.user.tag && interaction.guild.ownerId !== interaction.member.id) {
+        if (game.addedBy !== interaction.user.tag && !isBotAdmin(interaction.member)) {
             return interaction.reply({
                 content: `❌ You can only remove your own games!\nThis was added by **${game.addedBy}**`,
                 ephemeral: true
