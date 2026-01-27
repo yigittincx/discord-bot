@@ -283,6 +283,7 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'addgame') {
         const gameUrl = interaction.options.getString('url');
+        const manualName = interaction.options.getString('name'); // Opsiyonel manuel isim
         const gameId = extractGameId(gameUrl);
 
         if (!gameId) {
@@ -301,10 +302,19 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.deferReply();
 
-        const gameInfo = await getGameInfo(gameId);
+        let gameInfo = await getGameInfo(gameId);
+        
+        // Eğer API'den alınamadıysa ve manuel isim verildiyse
+        if (!gameInfo && manualName) {
+            gameInfo = {
+                id: gameId,
+                name: manualName,
+                creator: 'Unknown'
+            };
+        }
         
         if (!gameInfo) {
-            return interaction.editReply('❌ Could not fetch game information. Make sure the game ID is correct.');
+            return interaction.editReply('❌ Could not fetch game information.\n💡 For private games, use: `/addgame url:ID name:"Game Name"`');
         }
 
         games.push({
