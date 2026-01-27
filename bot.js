@@ -24,7 +24,7 @@ let config = {
     allowEveryone: false,
     allowedChannel: null,
     botAdmins: [],
-    leaderUserId: "1308721547740975124" // ✅ Lider ID'si buraya eklendi
+    leaderUserId: "1308721547740975124"
 };
 
 let games = [];
@@ -91,10 +91,15 @@ function extractGameId(url) {
 
 async function getGameInfo(gameId) {
     try {
+        console.log(`🔍 Fetching game info for ID: ${gameId}`);
+        
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         const universeData = await universeResponse.json();
         
+        console.log('Universe data:', universeData);
+        
         if (!universeData.universeId) {
+            console.log('❌ No universe ID found');
             return null;
         }
         
@@ -102,13 +107,18 @@ async function getGameInfo(gameId) {
         const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         const data = await response.json();
         
+        console.log('Game data:', data);
+        
         if (data.data && data.data.length > 0) {
+            const gameData = data.data[0];
+            console.log(`✅ Found game: ${gameData.name}, Playing: ${gameData.playing}, Max: ${gameData.maxPlayers}`);
+            
             return {
                 id: gameId,
-                name: data.data[0].name,
-                creator: data.data[0].creator.name,
-                playing: data.data[0].playing || 0,
-                maxPlayers: data.data[0].maxPlayers || 0
+                name: gameData.name,
+                creator: gameData.creator.name,
+                playing: gameData.playing || 0,
+                maxPlayers: gameData.maxPlayers || 0
             };
         }
     } catch (error) {
@@ -119,10 +129,13 @@ async function getGameInfo(gameId) {
 
 async function getGameStats(gameId) {
     try {
+        console.log(`📊 Fetching stats for game ID: ${gameId}`);
+        
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         const universeData = await universeResponse.json();
         
         if (!universeData.universeId) {
+            console.log('❌ No universe ID for stats');
             return { playing: 0, maxPlayers: 0 };
         }
         
@@ -131,10 +144,12 @@ async function getGameStats(gameId) {
         const data = await response.json();
         
         if (data.data && data.data.length > 0) {
-            return {
+            const stats = {
                 playing: data.data[0].playing || 0,
                 maxPlayers: data.data[0].maxPlayers || 0
             };
+            console.log(`✅ Stats: ${stats.playing}/${stats.maxPlayers}`);
+            return stats;
         }
     } catch (error) {
         console.error('Error fetching game stats:', error);
@@ -242,6 +257,9 @@ client.on('interactionCreate', async interaction => {
                 const leader = await client.users.fetch(config.leaderUserId);
                 const gameLink = `https://www.roblox.com/games/${gameId}`;
                 
+                // ✅ Güncel player sayısını çek
+                const stats = await getGameStats(gameId);
+                
                 const dmEmbed = new EmbedBuilder()
                     .setColor(0x00FF00)
                     .setTitle('🎮 New Game Link from Hub!')
@@ -249,7 +267,7 @@ client.on('interactionCreate', async interaction => {
                         { name: '🎮 Game Name', value: game.customName || game.name, inline: false },
                         { name: '🆔 Game ID', value: gameId, inline: true },
                         { name: '👤 Sent By', value: interaction.user.tag, inline: true },
-                        { name: '👥 Players', value: `${game.playing || 0}/${game.maxPlayers || 0}`, inline: true },
+                        { name: '👥 Players', value: `${stats.playing}/${stats.maxPlayers}`, inline: true },
                         { name: '🔗 Game Link', value: gameLink, inline: false }
                     )
                     .setFooter({ text: 'Retreat Gateway - Game Link Request' })
@@ -656,10 +674,13 @@ client.on('interactionCreate', async interaction => {
             };
         }
 
+        // ✅ Oyunu kaydet - playing/maxPlayers her zaman API'den çekilecek
         games.push({
-            ...gameInfo,
+            id: gameInfo.id,
+            name: gameInfo.name,
+            creator: gameInfo.creator,
             addedBy: interaction.user.tag,
-            addedByUserId: interaction.user.id, // ✅ User ID'yi kaydet
+            addedByUserId: interaction.user.id,
             addedAt: Date.now(),
             customName: null,
             customDescription: null
@@ -837,5 +858,3 @@ app.listen(PORT, () => {
         process.exit(1);
     });
 });
-
-
