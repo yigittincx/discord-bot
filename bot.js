@@ -165,7 +165,7 @@ client.on('interactionCreate', async interaction => {
     const { commandName } = interaction;
 
     // Channel restriction check - except for setchannel and admin commands
-    const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats'];
+    const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats', 'customizegame'];
     if (channelRestrictedCommands.includes(commandName)) {
         if (config.allowedChannel && interaction.channelId !== config.allowedChannel) {
             const channel = interaction.guild.channels.cache.get(config.allowedChannel);
@@ -190,6 +190,61 @@ client.on('interactionCreate', async interaction => {
             content: '❌ Only bot admins can use this command!',
             ephemeral: true
         });
+    }
+
+    if (commandName === 'customizegame') {
+        const gameId = interaction.options.getString('gameid');
+        const customName = interaction.options.getString('name');
+        const customDesc = interaction.options.getString('description');
+
+        const game = games.find(g => g.id === gameId);
+
+        if (!game) {
+            return interaction.reply({
+                content: '❌ Game not found in the hub!',
+                ephemeral: true
+            });
+        }
+
+        // Sadece oyunu ekleyen kişi veya bot admin customize edebilir
+        if (game.addedBy !== interaction.user.tag && !isBotAdmin(interaction.member)) {
+            return interaction.reply({
+                content: `❌ You can only customize your own games!\nThis game was added by **${game.addedBy}**`,
+                ephemeral: true
+            });
+        }
+
+        // Önceki değerleri sakla
+        const oldName = game.customName || game.name;
+        const oldDesc = game.customDescription || 'No description';
+
+        // Custom değerleri güncelle
+        if (customName) {
+            game.customName = customName;
+        }
+        if (customDesc) {
+            game.customDescription = customDesc;
+        }
+
+        saveGames();
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00D9FF)
+            .setTitle('✨ Game Customized')
+            .addFields(
+                { name: '🎮 Game ID', value: gameId, inline: true },
+                { name: '👤 Customized by', value: interaction.user.tag, inline: true },
+                { name: '\u200B', value: '\u200B', inline: false },
+                { name: '📝 Old Name', value: oldName, inline: true },
+                { name: '📝 New Name', value: game.customName || oldName, inline: true },
+                { name: '\u200B', value: '\u200B', inline: false },
+                { name: '📄 Old Description', value: oldDesc, inline: false },
+                { name: '📄 New Description', value: game.customDescription || oldDesc, inline: false }
+            )
+            .setFooter({ text: 'Changes will appear in Roblox hub' })
+            .setTimestamp();
+
+        await interaction.reply({ embeds: [embed] });
     }
 
     if (commandName === 'setadmin') {
@@ -272,7 +327,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 {
                     name: '🎮 Game Commands',
-                    value: '`/addgame` - Add game\n`/removegame` - Remove your game\n`/listgames` - List all\n`/cleargames` - Clear all',
+                    value: '`/addgame` - Add game\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all',
                     inline: false
                 },
                 {
@@ -430,7 +485,9 @@ client.on('interactionCreate', async interaction => {
         games.push({
             ...gameInfo,
             addedBy: interaction.user.tag,
-            addedAt: Date.now()
+            addedAt: Date.now(),
+            customName: null,
+            customDescription: null
         });
 
         saveGames();
@@ -444,6 +501,7 @@ client.on('interactionCreate', async interaction => {
                 { name: 'Creator', value: gameInfo.creator, inline: true },
                 { name: 'Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
             )
+            .setFooter({ text: 'Use /customizegame to add custom name & description' })
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });
@@ -476,7 +534,7 @@ client.on('interactionCreate', async interaction => {
             .setColor(0xFF0000)
             .setTitle('🗑️ Game Removed')
             .addFields(
-                { name: 'Name', value: game.name, inline: true },
+                { name: 'Name', value: game.customName || game.name, inline: true },
                 { name: 'ID', value: game.id, inline: true }
             )
             .setTimestamp();
@@ -500,9 +558,18 @@ client.on('interactionCreate', async interaction => {
             const uptimeText = formatUptime(uptime);
             const stats = await getGameStats(game.id);
             
+            const displayName = game.customName || game.name;
+            const hasCustomization = game.customName || game.customDescription ? ' ✨' : '';
+            
+            let fieldValue = `**ID:** ${game.id}\n**Added by:** ${game.addedBy}\n**⏱️ Uptime:** ${uptimeText}\n**👥 Players:** ${stats.playing}/${stats.maxPlayers}`;
+            
+            if (game.customDescription) {
+                fieldValue += `\n**📄 Description:** ${game.customDescription}`;
+            }
+            
             embed.addFields({
-                name: `${index + 1}. ${game.name}`,
-                value: `**ID:** ${game.id}\n**Added by:** ${game.addedBy}\n**⏱️ Uptime:** ${uptimeText}\n**👥 Players:** ${stats.playing}/${stats.maxPlayers}`,
+                name: `${index + 1}. ${displayName}${hasCustomization}`,
+                value: fieldValue,
                 inline: false
             });
         }
@@ -533,12 +600,15 @@ app.get('/api/games', async (req, res) => {
             const stats = await getGameStats(g.id);
             return {
                 id: g.id,
-                name: g.name,
+                name: g.customName || g.name, // Custom name varsa onu göster
+                originalName: g.name,
                 creator: g.creator,
+                description: g.customDescription || null, // Custom description ekle
                 uptime: Date.now() - g.addedAt,
                 uptimeFormatted: formatUptime(Date.now() - g.addedAt),
                 playing: stats.playing,
-                maxPlayers: stats.maxPlayers
+                maxPlayers: stats.maxPlayers,
+                addedBy: g.addedBy
             };
         })
     );
