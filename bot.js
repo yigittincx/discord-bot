@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
 
@@ -160,6 +160,120 @@ client.once('ready', () => {
 });
 
 client.on('interactionCreate', async interaction => {
+    // Button tıklamaları için
+    if (interaction.isButton()) {
+        if (interaction.customId.startsWith('customize_')) {
+            const gameId = interaction.customId.split('_')[1];
+            
+            const game = games.find(g => g.id === gameId);
+            
+            if (!game) {
+                return interaction.reply({
+                    content: '❌ Game not found!',
+                    ephemeral: true
+                });
+            }
+            
+            if (game.addedBy !== interaction.user.tag && !isBotAdmin(interaction.member)) {
+                return interaction.reply({
+                    content: '❌ You can only customize your own games!',
+                    ephemeral: true
+                });
+            }
+            
+            // Modal oluştur
+            const modal = new ModalBuilder()
+                .setCustomId(`customizeModal_${gameId}`)
+                .setTitle('✨ Customize Your Game');
+            
+            const nameInput = new TextInputBuilder()
+                .setCustomId('customName')
+                .setLabel('Custom Name (Optional)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('Enter a custom name for your game...')
+                .setMaxLength(50)
+                .setRequired(false)
+                .setValue(game.customName || '');
+            
+            const descInput = new TextInputBuilder()
+                .setCustomId('customDescription')
+                .setLabel('Custom Description (Optional)')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Enter a custom description...')
+                .setMaxLength(200)
+                .setRequired(false)
+                .setValue(game.customDescription || '');
+            
+            const nameRow = new ActionRowBuilder().addComponents(nameInput);
+            const descRow = new ActionRowBuilder().addComponents(descInput);
+            
+            modal.addComponents(nameRow, descRow);
+            
+            await interaction.showModal(modal);
+        }
+    }
+    
+    // Modal submit için
+    if (interaction.isModalSubmit()) {
+        if (interaction.customId.startsWith('customizeModal_')) {
+            const gameId = interaction.customId.split('_')[1];
+            const customName = interaction.fields.getTextInputValue('customName');
+            const customDescription = interaction.fields.getTextInputValue('customDescription');
+            
+            const game = games.find(g => g.id === gameId);
+            
+            if (!game) {
+                return interaction.reply({
+                    content: '❌ Game not found!',
+                    ephemeral: true
+                });
+            }
+            
+            const oldName = game.customName || game.name;
+            const oldDesc = game.customDescription || 'No description';
+            
+            // Boş değilse güncelle
+            if (customName.trim()) {
+                game.customName = customName.trim();
+            }
+            if (customDescription.trim()) {
+                game.customDescription = customDescription.trim();
+            }
+            
+            saveGames();
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x00D9FF)
+                .setTitle('✨ Game Customized Successfully!')
+                .addFields(
+                    { name: '🎮 Game ID', value: gameId, inline: true },
+                    { name: '👤 Customized by', value: interaction.user.tag, inline: true },
+                    { name: '\u200B', value: '\u200B', inline: false }
+                )
+                .setFooter({ text: 'Changes are now live in your Roblox hub!' })
+                .setTimestamp();
+            
+            if (customName.trim()) {
+                embed.addFields(
+                    { name: '📝 Name Updated', value: `~~${oldName}~~ → **${game.customName}**`, inline: false }
+                );
+            }
+            
+            if (customDescription.trim()) {
+                embed.addFields(
+                    { name: '📄 Description Updated', value: `~~${oldDesc}~~ → **${game.customDescription}**`, inline: false }
+                );
+            }
+            
+            if (!customName.trim() && !customDescription.trim()) {
+                embed.setDescription('⚠️ No changes made. Both fields were empty.');
+                embed.setColor(0xFFAA00);
+            }
+            
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+    }
+    
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
@@ -494,17 +608,26 @@ client.on('interactionCreate', async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
-            .setTitle('✅ Game Added')
+            .setTitle('✅ Game Added Successfully!')
             .addFields(
-                { name: 'Name', value: gameInfo.name, inline: true },
-                { name: 'ID', value: gameId, inline: true },
-                { name: 'Creator', value: gameInfo.creator, inline: true },
-                { name: 'Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
+                { name: '🎮 Name', value: gameInfo.name, inline: true },
+                { name: '🆔 ID', value: gameId, inline: true },
+                { name: '👤 Creator', value: gameInfo.creator, inline: true },
+                { name: '👥 Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
             )
-            .setFooter({ text: 'Use /customizegame to add custom name & description' })
+            .setDescription('**Would you like to customize this game?**\nClick the button below to add a custom name and description!')
+            .setFooter({ text: 'You can customize it anytime!' })
             .setTimestamp();
 
-        await interaction.editReply({ embeds: [embed] });
+        const customizeButton = new ButtonBuilder()
+            .setCustomId(`customize_${gameId}`)
+            .setLabel('✨ Customize Game')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('🎨');
+
+        const row = new ActionRowBuilder().addComponents(customizeButton);
+
+        await interaction.editReply({ embeds: [embed], components: [row] });
     }
 
     else if (commandName === 'removegame') {
