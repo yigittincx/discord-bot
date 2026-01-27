@@ -28,6 +28,48 @@ const commands = [
     {
         name: 'listgames',
         description: 'List all games in the hub'
+    },
+    {
+        name: 'cleargames',
+        description: 'Clear all games from the hub'
+    },
+    {
+        name: 'setroles',
+        description: 'Manage role permissions (Admin only)',
+        options: [
+            {
+                name: 'action',
+                description: 'Action to perform',
+                type: 3,
+                required: true,
+                choices: [
+                    { name: 'Add Role', value: 'add' },
+                    { name: 'Remove Role', value: 'remove' },
+                    { name: 'List Roles', value: 'list' },
+                    { name: 'Allow Everyone', value: 'everyone' }
+                ]
+            },
+            {
+                name: 'role',
+                description: 'The role to add/remove',
+                type: 8,
+                required: false
+            },
+            {
+                name: 'enable',
+                description: 'Enable/disable everyone mode',
+                type: 5,
+                required: false
+            }
+        ]
+    },
+    {
+        name: 'help',
+        description: 'Show all available commands'
+    },
+    {
+        name: 'stats',
+        description: 'Show hub statistics'
     }
 ];
 
