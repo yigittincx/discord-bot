@@ -7,59 +7,57 @@ const GUILD_ID = '1465302756976758786';
 const commands = [
     {
         name: 'addgame',
-        description: 'Add a game to the hub',
-        options: [
-            {
-                name: 'gameid',
-                description: 'Oyun ID numarası (örn: 606849621)',
-                type: 3,
-                required: true
-            }
-        ]
+        description: 'Oyun ekle',
+        options: [{
+            name: 'gameid',
+            description: 'Oyun ID (örn: 606849621)',
+            type: 3,
+            required: true
+        }]
     },
     {
         name: 'removegame',
-        description: 'Remove a game from the hub',
+        description: 'Kendi oyununu sil',
         options: [{
-            name: 'id',
-            description: 'Game ID to remove',
+            name: 'gameid',
+            description: 'Silinecek oyun ID',
             type: 3,
             required: true
         }]
     },
     {
         name: 'listgames',
-        description: 'List all games in the hub'
+        description: 'Tüm oyunları listele'
     },
     {
         name: 'cleargames',
-        description: 'Clear all games from the hub'
+        description: 'Tüm oyunları sil'
     },
     {
         name: 'setroles',
-        description: 'Manage role permissions (Admin only)',
+        description: 'Rol yönetimi (Sadece admin)',
         options: [
             {
                 name: 'action',
-                description: 'Action to perform',
+                description: 'İşlem',
                 type: 3,
                 required: true,
                 choices: [
-                    { name: 'Add Role', value: 'add' },
-                    { name: 'Remove Role', value: 'remove' },
-                    { name: 'List Roles', value: 'list' },
-                    { name: 'Allow Everyone', value: 'everyone' }
+                    { name: 'Rol Ekle', value: 'add' },
+                    { name: 'Rol Çıkar', value: 'remove' },
+                    { name: 'Rolleri Listele', value: 'list' },
+                    { name: 'Herkese Aç/Kapat', value: 'everyone' }
                 ]
             },
             {
                 name: 'role',
-                description: 'The role to add/remove',
+                description: 'Rol',
                 type: 8,
                 required: false
             },
             {
                 name: 'enable',
-                description: 'Enable/disable everyone mode',
+                description: 'Aktif/Pasif',
                 type: 5,
                 required: false
             }
@@ -67,16 +65,16 @@ const commands = [
     },
     {
         name: 'help',
-        description: 'Show all available commands'
+        description: 'Yardım menüsü'
     },
     {
         name: 'stats',
-        description: 'Show hub statistics'
+        description: 'İstatistikler'
     }
 ];
 
 if (!TOKEN) {
-    console.error('❌ DISCORD_TOKEN environment variable not found!');
+    console.error('❌ DISCORD_TOKEN not found!');
     process.exit(1);
 }
 
@@ -84,23 +82,16 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
     try {
-        console.log('🔄 Registering slash commands...');
+        console.log('🔄 Registering commands...');
 
-        if (GUILD_ID) {
-            await rest.put(
-                Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-                { body: commands }
-            );
-            console.log('✅ Commands registered for guild!');
-        } else {
-            await rest.put(
-                Routes.applicationCommands(CLIENT_ID),
-                { body: commands }
-            );
-            console.log('✅ Commands registered globally!');
-        }
+        await rest.put(
+            Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+            { body: commands }
+        );
+        
+        console.log('✅ Commands registered!');
     } catch (error) {
-        console.error('❌ Error registering commands:', error);
+        console.error('❌ Error:', error);
         process.exit(1);
     }
 })();
