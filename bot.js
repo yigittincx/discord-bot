@@ -105,13 +105,40 @@ async function getGameInfo(gameId) {
             return {
                 id: gameId,
                 name: data.data[0].name,
-                creator: data.data[0].creator.name
+                creator: data.data[0].creator.name,
+                playing: data.data[0].playing || 0,
+                maxPlayers: data.data[0].maxPlayers || 0
             };
         }
     } catch (error) {
         console.error('Error fetching game info:', error);
     }
     return null;
+}
+
+async function getGameStats(gameId) {
+    try {
+        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        const universeData = await universeResponse.json();
+        
+        if (!universeData.universeId) {
+            return { playing: 0, maxPlayers: 0 };
+        }
+        
+        const universeId = universeData.universeId;
+        const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        const data = await response.json();
+        
+        if (data.data && data.data.length > 0) {
+            return {
+                playing: data.data[0].playing || 0,
+                maxPlayers: data.data[0].maxPlayers || 0
+            };
+        }
+    } catch (error) {
+        console.error('Error fetching game stats:', error);
+    }
+    return { playing: 0, maxPlayers: 0 };
 }
 
 function formatUptime(ms) {
@@ -394,7 +421,9 @@ client.on('interactionCreate', async interaction => {
             gameInfo = {
                 id: gameId,
                 name: `Game ${gameId}`,
-                creator: 'Unknown'
+                creator: 'Unknown',
+                playing: 0,
+                maxPlayers: 0
             };
         }
 
@@ -412,7 +441,8 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 { name: 'Name', value: gameInfo.name, inline: true },
                 { name: 'ID', value: gameId, inline: true },
-                { name: 'Creator', value: gameInfo.creator, inline: true }
+                { name: 'Creator', value: gameInfo.creator, inline: true },
+                { name: 'Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
             )
             .setTimestamp();
 
@@ -465,16 +495,17 @@ client.on('interactionCreate', async interaction => {
             .setDescription(`Total: ${games.length}`)
             .setTimestamp();
 
-        games.forEach((game, index) => {
+        for (const [index, game] of games.entries()) {
             const uptime = Date.now() - game.addedAt;
             const uptimeText = formatUptime(uptime);
+            const stats = await getGameStats(game.id);
             
             embed.addFields({
                 name: `${index + 1}. ${game.name}`,
-                value: `**ID:** ${game.id}\n**Added by:** ${game.addedBy}\n**⏱️ Uptime:** ${uptimeText}`,
+                value: `**ID:** ${game.id}\n**Added by:** ${game.addedBy}\n**⏱️ Uptime:** ${uptimeText}\n**👥 Players:** ${stats.playing}/${stats.maxPlayers}`,
                 inline: false
             });
-        });
+        }
 
         await interaction.reply({ embeds: [embed] });
     }
@@ -495,16 +526,26 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-app.get('/api/games', (req, res) => {
+app.get('/api/games', async (req, res) => {
+    // Her oyun için güncel player count'u çek
+    const gamesWithStats = await Promise.all(
+        games.map(async (g) => {
+            const stats = await getGameStats(g.id);
+            return {
+                id: g.id,
+                name: g.name,
+                creator: g.creator,
+                uptime: Date.now() - g.addedAt,
+                uptimeFormatted: formatUptime(Date.now() - g.addedAt),
+                playing: stats.playing,
+                maxPlayers: stats.maxPlayers
+            };
+        })
+    );
+
     res.json({
         success: true,
-        games: games.map(g => ({
-            id: g.id,
-            name: g.name,
-            creator: g.creator,
-            uptime: Date.now() - g.addedAt,
-            uptimeFormatted: formatUptime(Date.now() - g.addedAt)
-        }))
+        games: gamesWithStats
     });
 });
 
