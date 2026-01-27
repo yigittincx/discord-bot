@@ -24,6 +24,32 @@ const commands = [
         }]
     },
     {
+        name: 'customizegame',
+        description: 'Customize your game with custom name and description',
+        options: [
+            {
+                name: 'gameid',
+                description: 'Game ID to customize',
+                type: 3,
+                required: true
+            },
+            {
+                name: 'name',
+                description: 'Custom name for your game (max 50 chars)',
+                type: 3,
+                required: false,
+                max_length: 50
+            },
+            {
+                name: 'description',
+                description: 'Custom description (max 200 chars)',
+                type: 3,
+                required: false,
+                max_length: 200
+            }
+        ]
+    },
+    {
         name: 'listgames',
         description: 'List Games'
     },
