@@ -17,9 +17,9 @@ const commands = [
             },
             {
                 name: 'gamename',
-                description: 'Oyun ismi (private oyunlar için)',
+                description: 'Oyun ismi (public oyunlar için "auto" yazın)',
                 type: 3,
-                required: false
+                required: true
             }
         ]
     },
