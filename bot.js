@@ -9,7 +9,7 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
-
+// CORS için
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET');
@@ -19,6 +19,11 @@ app.use((req, res, next) => {
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const PORT = process.env.PORT || 3000;
+
+let config = {
+    allowedRoles: [],
+    allowEveryone: false
+};
 
 let games = [];
 
@@ -40,6 +45,30 @@ function saveGames() {
     }
 }
 
+function loadConfig() {
+    try {
+        if (fs.existsSync('config.json')) {
+            config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
+        }
+    } catch (error) {
+        console.error('Error loading config:', error);
+    }
+}
+
+function saveConfig() {
+    try {
+        fs.writeFileSync('config.json', JSON.stringify(config, null, 2));
+    } catch (error) {
+        console.error('Error saving config:', error);
+    }
+}
+
+function hasPermission(member) {
+    if (member.guild.ownerId === member.id) return true;
+    if (config.allowEveryone) return true;
+    return member.roles.cache.some(role => config.allowedRoles.includes(role.id));
+}
+
 function extractGameId(url) {
     const patterns = [
         /roblox\.com\/games\/(\d+)/,
@@ -56,7 +85,6 @@ function extractGameId(url) {
 
 async function getGameInfo(gameId) {
     try {
-        
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         const universeData = await universeResponse.json();
         
@@ -65,7 +93,6 @@ async function getGameInfo(gameId) {
         }
         
         const universeId = universeData.universeId;
-        
         
         const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         const data = await response.json();
@@ -86,12 +113,173 @@ async function getGameInfo(gameId) {
 client.once('ready', () => {
     console.log(`✅ Bot is online as ${client.user.tag}`);
     loadGames();
+    loadConfig();
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
+
+    // Yetki kontrolü
+    const gameManagementCommands = ['addgame', 'cleargames'];
+    if (gameManagementCommands.includes(commandName) && !hasPermission(interaction.member)) {
+        return interaction.reply({
+            content: '❌ You don\'t have permission to use this command!\n💡 Ask an administrator to add your role using `/setroles`',
+            ephemeral: true
+        });
+    }
+    
+    // removegame için özel kontrol (herkes kendi oyununu silebilir)
+    // setroles sadece admin
+    if (commandName === 'setroles' && !interaction.member.permissions.has('Administrator')) {
+        return interaction.reply({
+            content: '❌ Only administrators can manage permissions!',
+            ephemeral: true
+        });
+    }
+
+    if (commandName === 'help') {
+        const embed = new EmbedBuilder()
+            .setColor(0x0099FF)
+            .setTitle('🤖 Bot Commands Help')
+            .setDescription('Here are all available commands:')
+            .addFields(
+                {
+                    name: '🎮 Game Management',
+                    value: '`/addgame` - Add a game to the hub\n`/removegame` - Remove a game\n`/listgames` - List all games\n`/cleargames` - Clear all games',
+                    inline: false
+                },
+                {
+                    name: '📊 Information',
+                    value: '`/stats` - Show hub statistics\n`/help` - Show this help message',
+                    inline: false
+                },
+                {
+                    name: '🔒 Permission Management',
+                    value: '`/setroles` - Manage which roles can use the bot',
+                    inline: false
+                }
+            )
+            .setFooter({ text: 'Retreat Gateway Bot' })
+            .setTimestamp();
+
+        return interaction.reply({ embeds: [embed] });
+    }
+
+    if (commandName === 'stats') {
+        const userStats = {};
+        games.forEach(game => {
+            userStats[game.addedBy] = (userStats[game.addedBy] || 0) + 1;
+        });
+        
+        const topContributors = Object.entries(userStats)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map((entry, index) => `${index + 1}. **${entry[0]}** - ${entry[1]} game${entry[1] > 1 ? 's' : ''}`)
+            .join('\n');
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('📊 Hub Statistics')
+            .addFields(
+                {
+                    name: '🎮 Total Games',
+                    value: `${games.length} game${games.length !== 1 ? 's' : ''}`,
+                    inline: true
+                },
+                {
+                    name: '👑 Top Contributors',
+                    value: topContributors || 'No games yet',
+                    inline: false
+                }
+            )
+            .setTimestamp();
+
+        return interaction.reply({ embeds: [embed] });
+    }
+
+    if (commandName === 'setroles') {
+        if (!interaction.member.permissions.has('Administrator')) {
+            return interaction.reply({
+                content: '❌ Only administrators can manage permissions!',
+                ephemeral: true
+            });
+        }
+
+        const action = interaction.options.getString('action');
+        
+        if (action === 'add') {
+            const role = interaction.options.getRole('role');
+            
+            if (config.allowedRoles.includes(role.id)) {
+                return interaction.reply({
+                    content: `❌ Role ${role.name} already has permission!`,
+                    ephemeral: true
+                });
+            }
+            
+            config.allowedRoles.push(role.id);
+            saveConfig();
+            
+            return interaction.reply(`✅ Added ${role.name} to allowed roles!`);
+        }
+        
+        else if (action === 'remove') {
+            const role = interaction.options.getRole('role');
+            
+            const index = config.allowedRoles.indexOf(role.id);
+            if (index === -1) {
+                return interaction.reply({
+                    content: `❌ Role ${role.name} doesn't have permission!`,
+                    ephemeral: true
+                });
+            }
+            
+            config.allowedRoles.splice(index, 1);
+            saveConfig();
+            
+            return interaction.reply(`✅ Removed ${role.name} from allowed roles!`);
+        }
+        
+        else if (action === 'list') {
+            if (config.allowEveryone) {
+                return interaction.reply('📋 **Everyone** can manage games!');
+            }
+            
+            if (config.allowedRoles.length === 0) {
+                return interaction.reply('📋 No roles have permission yet! Only server owner can manage games.');
+            }
+            
+            const rolesList = config.allowedRoles
+                .map(roleId => {
+                    const role = interaction.guild.roles.cache.get(roleId);
+                    return role ? `• ${role.name}` : `• Unknown Role (${roleId})`;
+                })
+                .join('\n');
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x0099FF)
+                .setTitle('🔒 Allowed Roles')
+                .setDescription(rolesList)
+                .setFooter({ text: 'Server owner always has permission' })
+                .setTimestamp();
+            
+            return interaction.reply({ embeds: [embed] });
+        }
+        
+        else if (action === 'everyone') {
+            const enable = interaction.options.getBoolean('enable');
+            config.allowEveryone = enable;
+            saveConfig();
+            
+            if (enable) {
+                return interaction.reply('✅ Everyone can now manage games!');
+            } else {
+                return interaction.reply('✅ Restricted to allowed roles only!');
+            }
+        }
+    }
 
     if (commandName === 'addgame') {
         const gameUrl = interaction.options.getString('url');
@@ -141,6 +329,43 @@ client.on('interactionCreate', async interaction => {
         await interaction.editReply({ embeds: [embed] });
     }
 
+    else if (commandName === 'removegame') {
+        const gameId = interaction.options.getString('id');
+
+        const gameIndex = games.findIndex(g => g.id === gameId);
+
+        if (gameIndex === -1) {
+            return interaction.reply({
+                content: '❌ Game not found in the hub!',
+                ephemeral: true
+            });
+        }
+
+        const game = games[gameIndex];
+        
+        // Sadece kendi eklediği oyunu silebilir (sunucu sahibi hariç)
+        if (game.addedBy !== interaction.user.tag && interaction.guild.ownerId !== interaction.member.id) {
+            return interaction.reply({
+                content: `❌ You can only remove games you added!\nThis game was added by **${game.addedBy}**`,
+                ephemeral: true
+            });
+        }
+
+        games.splice(gameIndex, 1);
+        saveGames();
+
+        const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('🗑️ Game Removed Successfully')
+            .addFields(
+                { name: 'Game Name', value: game.name, inline: true },
+                { name: 'Game ID', value: game.id, inline: true }
+            )
+            .setTimestamp();
+
+        await interaction.reply({ embeds: [embed] });
+    }
+
     else if (commandName === 'listgames') {
         if (games.length === 0) {
             return interaction.reply('🔭 No games in the hub yet!');
@@ -163,32 +388,19 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ embeds: [embed] });
     }
 
-    else if (commandName === 'removegame') {
-        const gameId = interaction.options.getString('id');
-
-        const gameIndex = games.findIndex(g => g.id === gameId);
-
-        if (gameIndex === -1) {
+    else if (commandName === 'cleargames') {
+        if (games.length === 0) {
             return interaction.reply({
-                content: '❌ Game not found in the hub!',
+                content: '🔭 No games to clear!',
                 ephemeral: true
             });
         }
 
-        const removedGame = games[gameIndex];
-        games.splice(gameIndex, 1);
+        const count = games.length;
+        games = [];
         saveGames();
 
-        const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('🗑️ Game Removed Successfully')
-            .addFields(
-                { name: 'Game Name', value: removedGame.name, inline: true },
-                { name: 'Game ID', value: removedGame.id, inline: true }
-            )
-            .setTimestamp();
-
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply(`🗑️ Successfully cleared ${count} game(s) from the hub!`);
     }
 });
 
