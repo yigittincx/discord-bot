@@ -7,39 +7,39 @@ const GUILD_ID = '1465302756976758786';
 const commands = [
     {
         name: 'addgame',
-        description: 'Oyun ekle',
+        description: 'Add Your Game',
         options: [{
             name: 'gameid',
-            description: 'Oyun ID (örn: 606849621)',
+            description: 'Oyun ID (example: 606849621)',
             type: 3,
             required: true
         }]
     },
     {
         name: 'removegame',
-        description: 'Kendi oyununu sil',
+        description: 'Remove your game',
         options: [{
             name: 'gameid',
-            description: 'Silinecek oyun ID',
+            description: 'Game ID to be deleted',
             type: 3,
             required: true
         }]
     },
     {
         name: 'listgames',
-        description: 'Tüm oyunları listele'
+        description: 'List Games'
     },
     {
         name: 'cleargames',
-        description: 'Tüm oyunları sil'
+        description: 'Clear All Games'
     },
     {
         name: 'setroles',
-        description: 'Rol yönetimi (Sadece admin)',
+        description: 'Role management (Admin only)',
         options: [
             {
                 name: 'action',
-                description: 'İşlem',
+                description: 'Process',
                 type: 3,
                 required: true,
                 choices: [
@@ -57,7 +57,7 @@ const commands = [
             },
             {
                 name: 'enable',
-                description: 'Aktif/Pasif',
+                description: 'Active/Passive',
                 type: 5,
                 required: false
             }
@@ -65,11 +65,11 @@ const commands = [
     },
     {
         name: 'help',
-        description: 'Yardım menüsü'
+        description: 'Help menu'
     },
     {
         name: 'stats',
-        description: 'İstatistikler'
+        description: 'Statistics'
     }
 ];
 
@@ -95,3 +95,4 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
         process.exit(1);
     }
 })();
+
