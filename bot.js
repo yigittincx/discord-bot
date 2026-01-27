@@ -21,7 +21,8 @@ const PORT = process.env.PORT || 3000;
 
 let config = {
     allowedRoles: [],
-    allowEveryone: false
+    allowEveryone: false,
+    allowedChannel: null
 };
 
 let games = [];
@@ -107,6 +108,18 @@ async function getGameInfo(gameId) {
     return null;
 }
 
+function formatUptime(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    if (minutes > 0) return `${minutes}m`;
+    return `${seconds}s`;
+}
+
 client.once('ready', () => {
     console.log(`✅ Bot is online as ${client.user.tag}`);
     loadGames();
@@ -118,6 +131,18 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
+    // Channel restriction check - except for setchannel and admin commands
+    const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats'];
+    if (channelRestrictedCommands.includes(commandName)) {
+        if (config.allowedChannel && interaction.channelId !== config.allowedChannel) {
+            const channel = interaction.guild.channels.cache.get(config.allowedChannel);
+            return interaction.reply({
+                content: `❌ You can only use this command in ${channel}!`,
+                ephemeral: true
+            });
+        }
+    }
+
     const gameManagementCommands = ['addgame', 'cleargames'];
     if (gameManagementCommands.includes(commandName) && !hasPermission(interaction.member)) {
         return interaction.reply({
@@ -126,11 +151,25 @@ client.on('interactionCreate', async interaction => {
         });
     }
     
-    if (commandName === 'setroles' && !interaction.member.permissions.has('Administrator')) {
+    if ((commandName === 'setroles' || commandName === 'setchannel') && !interaction.member.permissions.has('Administrator')) {
         return interaction.reply({
             content: '❌ Only administrators can manage permissions!',
             ephemeral: true
         });
+    }
+
+    if (commandName === 'setchannel') {
+        const channel = interaction.options.getChannel('channel');
+        
+        if (channel) {
+            config.allowedChannel = channel.id;
+            saveConfig();
+            return interaction.reply(`✅ Bot will now only work in ${channel}!`);
+        } else {
+            config.allowedChannel = null;
+            saveConfig();
+            return interaction.reply('✅ Channel restriction removed! Bot can work in all channels.');
+        }
     }
 
     if (commandName === 'help') {
@@ -150,7 +189,7 @@ client.on('interactionCreate', async interaction => {
                 },
                 {
                     name: '🔒 Admin',
-                    value: '`/setroles` - Manage permissions',
+                    value: '`/setroles` - Manage permissions\n`/setchannel` - Set bot channel',
                     inline: false
                 }
             )
@@ -361,9 +400,12 @@ client.on('interactionCreate', async interaction => {
             .setTimestamp();
 
         games.forEach((game, index) => {
+            const uptime = Date.now() - game.addedAt;
+            const uptimeText = formatUptime(uptime);
+            
             embed.addFields({
                 name: `${index + 1}. ${game.name}`,
-                value: `**ID:** ${game.id}\n**Added by:** ${game.addedBy}`,
+                value: `**ID:** ${game.id}\n**Added by:** ${game.addedBy}\n**⏱️ Uptime:** ${uptimeText}`,
                 inline: false
             });
         });
@@ -393,7 +435,9 @@ app.get('/api/games', (req, res) => {
         games: games.map(g => ({
             id: g.id,
             name: g.name,
-            creator: g.creator
+            creator: g.creator,
+            uptime: Date.now() - g.addedAt,
+            uptimeFormatted: formatUptime(Date.now() - g.addedAt)
         }))
     });
 });
