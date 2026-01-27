@@ -1,16 +1,14 @@
 const { REST, Routes } = require('discord.js');
-
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = '1465302232001151170';
 const GUILD_ID = '1465302756976758786';
-
 const commands = [
     {
         name: 'addgame',
         description: 'Add Your Game',
         options: [{
             name: 'gameid',
-            description: 'Oyun ID (example: 606849621)',
+            description: 'Game ID (example: 606849621)',
             type: 3,
             required: true
         }]
@@ -39,26 +37,38 @@ const commands = [
         options: [
             {
                 name: 'action',
-                description: 'Process',
+                description: 'Action',
                 type: 3,
                 required: true,
                 choices: [
-                    { name: 'Rol Ekle', value: 'add' },
-                    { name: 'Rol Çıkar', value: 'remove' },
-                    { name: 'Rolleri Listele', value: 'list' },
-                    { name: 'Herkese Aç/Kapat', value: 'everyone' }
+                    { name: 'Add Role', value: 'add' },
+                    { name: 'Remove Role', value: 'remove' },
+                    { name: 'List Roles', value: 'list' },
+                    { name: 'Toggle Everyone', value: 'everyone' }
                 ]
             },
             {
                 name: 'role',
-                description: 'Rol',
+                description: 'Role',
                 type: 8,
                 required: false
             },
             {
                 name: 'enable',
-                description: 'Active/Passive',
+                description: 'Enable/Disable',
                 type: 5,
+                required: false
+            }
+        ]
+    },
+    {
+        name: 'setchannel',
+        description: 'Set bot channel (Admin only)',
+        options: [
+            {
+                name: 'channel',
+                description: 'Select channel (leave empty to remove restriction)',
+                type: 7,
                 required: false
             }
         ]
@@ -72,18 +82,14 @@ const commands = [
         description: 'Statistics'
     }
 ];
-
 if (!TOKEN) {
     console.error('❌ DISCORD_TOKEN not found!');
     process.exit(1);
 }
-
 const rest = new REST({ version: '10' }).setToken(TOKEN);
-
 (async () => {
     try {
         console.log('🔄 Registering commands...');
-
         await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
             { body: commands }
@@ -95,4 +101,3 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
         process.exit(1);
     }
 })();
-
