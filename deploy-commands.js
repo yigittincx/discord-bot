@@ -1,4 +1,4 @@
-const { REST, Routes } = require('discord.js');const { REST, Routes } = require('discord.js');
+const { REST, Routes } = require('discord.js');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = '1465302232001151170';
@@ -11,13 +11,13 @@ const commands = [
         options: [
             {
                 name: 'url',
-                description: 'Roblox game URL or ID',
+                description: 'Game ID (örn: 606849621) veya URL',
                 type: 3,
                 required: true
             },
             {
                 name: 'name',
-                description: 'Game name (for private games)',
+                description: 'Oyun İsmi (private oyunlar için zorunlu)',
                 type: 3,
                 required: false
             }
