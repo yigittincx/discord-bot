@@ -14,12 +14,6 @@ const commands = [
                 description: 'Oyun ID numarası (örn: 606849621)',
                 type: 3,
                 required: true
-            },
-            {
-                name: 'gamename',
-                description: 'Oyun ismi (public oyunlar için "auto" yazın)',
-                type: 3,
-                required: true
             }
         ]
     },
