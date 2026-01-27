@@ -10,14 +10,14 @@ const commands = [
         description: 'Add a game to the hub',
         options: [
             {
-                name: 'url',
-                description: 'Game ID (örn: 606849621) veya URL',
+                name: 'gameid',
+                description: 'Oyun ID numarası (örn: 606849621)',
                 type: 3,
                 required: true
             },
             {
-                name: 'name',
-                description: 'Oyun İsmi (private oyunlar için zorunlu)',
+                name: 'gamename',
+                description: 'Oyun ismi (private oyunlar için)',
                 type: 3,
                 required: false
             }
