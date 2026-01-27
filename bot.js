@@ -314,7 +314,7 @@ client.on('interactionCreate', async interaction => {
         }
         
         if (!gameInfo) {
-            return interaction.editReply('❌ Could not fetch game information.\n💡 For private games, use: `/addgame url:ID name:"Game Name"`');
+            return interaction.editReply('❌ Could not fetch game information.\n💡 For private games, use: `/addgame gameid:ID gamename:"Oyun İsmi"`');
         }
 
         games.push({
