@@ -9,7 +9,6 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
-// CORS için
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET');
@@ -72,7 +71,6 @@ function hasPermission(member) {
 function extractGameId(url) {
     const patterns = [
         /roblox\.com\/games\/(\d+)/,
-        /roblox\.com\/games\/(\d+)\/[\w-]+/,
         /^(\d+)$/
     ];
     
@@ -89,11 +87,10 @@ async function getGameInfo(gameId) {
         const universeData = await universeResponse.json();
         
         if (!universeData.universeId) {
-            throw new Error('Could not get universe ID');
+            return null;
         }
         
         const universeId = universeData.universeId;
-        
         const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         const data = await response.json();
         
@@ -121,17 +118,14 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    // Yetki kontrolü
     const gameManagementCommands = ['addgame', 'cleargames'];
     if (gameManagementCommands.includes(commandName) && !hasPermission(interaction.member)) {
         return interaction.reply({
-            content: '❌ You don\'t have permission to use this command!\n💡 Ask an administrator to add your role using `/setroles`',
+            content: '❌ You don\'t have permission!\n💡 Ask admin to add your role: `/setroles action:add role:@YourRole`',
             ephemeral: true
         });
     }
     
-    // removegame için özel kontrol (herkes kendi oyununu silebilir)
-    // setroles sadece admin
     if (commandName === 'setroles' && !interaction.member.permissions.has('Administrator')) {
         return interaction.reply({
             content: '❌ Only administrators can manage permissions!',
@@ -142,26 +136,25 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
-            .setTitle('🤖 Bot Commands Help')
-            .setDescription('Here are all available commands:')
+            .setTitle('🤖 Retreat Gateway Bot')
             .addFields(
                 {
-                    name: '🎮 Game Management',
-                    value: '`/addgame` - Add a game to the hub\n`/removegame` - Remove a game\n`/listgames` - List all games\n`/cleargames` - Clear all games',
+                    name: '🎮 Game Commands',
+                    value: '`/addgame` - Add game\n`/removegame` - Remove your game\n`/listgames` - List all\n`/cleargames` - Clear all',
                     inline: false
                 },
                 {
-                    name: '📊 Information',
-                    value: '`/stats` - Show hub statistics\n`/help` - Show this help message',
+                    name: '📊 Info',
+                    value: '`/stats` - Statistics\n`/help` - This menu',
                     inline: false
                 },
                 {
-                    name: '🔒 Permission Management',
-                    value: '`/setroles` - Manage which roles can use the bot',
+                    name: '🔒 Admin',
+                    value: '`/setroles` - Manage permissions',
                     inline: false
                 }
             )
-            .setFooter({ text: 'Retreat Gateway Bot' })
+            .setFooter({ text: 'Retreat Gateway' })
             .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
@@ -185,7 +178,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 {
                     name: '🎮 Total Games',
-                    value: `${games.length} game${games.length !== 1 ? 's' : ''}`,
+                    value: `${games.length}`,
                     inline: true
                 },
                 {
@@ -200,13 +193,6 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (commandName === 'setroles') {
-        if (!interaction.member.permissions.has('Administrator')) {
-            return interaction.reply({
-                content: '❌ Only administrators can manage permissions!',
-                ephemeral: true
-            });
-        }
-
         const action = interaction.options.getString('action');
         
         if (action === 'add') {
@@ -239,7 +225,7 @@ client.on('interactionCreate', async interaction => {
             config.allowedRoles.splice(index, 1);
             saveConfig();
             
-            return interaction.reply(`✅ Removed ${role.name} from allowed roles!`);
+            return interaction.reply(`✅ Removed ${role.name}!`);
         }
         
         else if (action === 'list') {
@@ -248,13 +234,13 @@ client.on('interactionCreate', async interaction => {
             }
             
             if (config.allowedRoles.length === 0) {
-                return interaction.reply('📋 No roles have permission yet! Only server owner can manage games.');
+                return interaction.reply('📋 No roles yet! Only server owner can manage.');
             }
             
             const rolesList = config.allowedRoles
                 .map(roleId => {
                     const role = interaction.guild.roles.cache.get(roleId);
-                    return role ? `• ${role.name}` : `• Unknown Role (${roleId})`;
+                    return role ? `• ${role.name}` : `• Unknown Role`;
                 })
                 .join('\n');
             
@@ -273,29 +259,24 @@ client.on('interactionCreate', async interaction => {
             config.allowEveryone = enable;
             saveConfig();
             
-            if (enable) {
-                return interaction.reply('✅ Everyone can now manage games!');
-            } else {
-                return interaction.reply('✅ Restricted to allowed roles only!');
-            }
+            return interaction.reply(enable ? '✅ Everyone can now manage games!' : '✅ Restricted to roles only!');
         }
     }
 
     if (commandName === 'addgame') {
-        const gameUrl = interaction.options.getString('url');
-        const manualName = interaction.options.getString('name'); // Opsiyonel manuel isim
-        const gameId = extractGameId(gameUrl);
+        const gameIdInput = interaction.options.getString('gameid');
+        const gameId = extractGameId(gameIdInput);
 
         if (!gameId) {
             return interaction.reply({
-                content: '❌ Invalid Roblox game URL or ID!',
+                content: '❌ Invalid game ID!',
                 ephemeral: true
             });
         }
 
         if (games.find(g => g.id === gameId)) {
             return interaction.reply({
-                content: '❌ This game is already in the hub!',
+                content: '❌ Already added!',
                 ephemeral: true
             });
         }
@@ -304,17 +285,12 @@ client.on('interactionCreate', async interaction => {
 
         let gameInfo = await getGameInfo(gameId);
         
-        // Eğer API'den alınamadıysa ve manuel isim verildiyse
-        if (!gameInfo && manualName) {
+        if (!gameInfo) {
             gameInfo = {
                 id: gameId,
-                name: manualName,
+                name: `Game ${gameId}`,
                 creator: 'Unknown'
             };
-        }
-        
-        if (!gameInfo) {
-            return interaction.editReply('❌ Could not fetch game information.\n💡 For private games, use: `/addgame gameid:ID gamename:"Oyun İsmi"`');
         }
 
         games.push({
@@ -327,12 +303,11 @@ client.on('interactionCreate', async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
-            .setTitle('✅ Game Added Successfully')
+            .setTitle('✅ Game Added')
             .addFields(
-                { name: 'Game Name', value: gameInfo.name, inline: true },
-                { name: 'Game ID', value: gameId, inline: true },
-                { name: 'Creator', value: gameInfo.creator, inline: true },
-                { name: 'Added By', value: interaction.user.tag, inline: true }
+                { name: 'Name', value: gameInfo.name, inline: true },
+                { name: 'ID', value: gameId, inline: true },
+                { name: 'Creator', value: gameInfo.creator, inline: true }
             )
             .setTimestamp();
 
@@ -340,23 +315,21 @@ client.on('interactionCreate', async interaction => {
     }
 
     else if (commandName === 'removegame') {
-        const gameId = interaction.options.getString('id');
-
+        const gameId = interaction.options.getString('gameid');
         const gameIndex = games.findIndex(g => g.id === gameId);
 
         if (gameIndex === -1) {
             return interaction.reply({
-                content: '❌ Game not found in the hub!',
+                content: '❌ Game not found!',
                 ephemeral: true
             });
         }
 
         const game = games[gameIndex];
         
-        // Sadece kendi eklediği oyunu silebilir (sunucu sahibi hariç)
         if (game.addedBy !== interaction.user.tag && interaction.guild.ownerId !== interaction.member.id) {
             return interaction.reply({
-                content: `❌ You can only remove games you added!\nThis game was added by **${game.addedBy}**`,
+                content: `❌ You can only remove your own games!\nThis was added by **${game.addedBy}**`,
                 ephemeral: true
             });
         }
@@ -366,10 +339,10 @@ client.on('interactionCreate', async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor(0xFF0000)
-            .setTitle('🗑️ Game Removed Successfully')
+            .setTitle('🗑️ Game Removed')
             .addFields(
-                { name: 'Game Name', value: game.name, inline: true },
-                { name: 'Game ID', value: game.id, inline: true }
+                { name: 'Name', value: game.name, inline: true },
+                { name: 'ID', value: game.id, inline: true }
             )
             .setTimestamp();
 
@@ -378,19 +351,19 @@ client.on('interactionCreate', async interaction => {
 
     else if (commandName === 'listgames') {
         if (games.length === 0) {
-            return interaction.reply('🔭 No games in the hub yet!');
+            return interaction.reply('🔭 No games yet!');
         }
 
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
             .setTitle('🎮 Games in Hub')
-            .setDescription(`Total Games: ${games.length}`)
+            .setDescription(`Total: ${games.length}`)
             .setTimestamp();
 
         games.forEach((game, index) => {
             embed.addFields({
                 name: `${index + 1}. ${game.name}`,
-                value: `**ID:** ${game.id}\n**Creator:** ${game.creator}\n**Added By:** ${game.addedBy}`,
+                value: `**ID:** ${game.id}\n**Added by:** ${game.addedBy}`,
                 inline: false
             });
         });
@@ -410,11 +383,10 @@ client.on('interactionCreate', async interaction => {
         games = [];
         saveGames();
 
-        await interaction.reply(`🗑️ Successfully cleared ${count} game(s) from the hub!`);
+        await interaction.reply(`🗑️ Cleared ${count} game(s)!`);
     }
 });
 
-// API Endpoints
 app.get('/api/games', (req, res) => {
     res.json({
         success: true,
@@ -442,15 +414,14 @@ app.get('/', (req, res) => {
 });
 
 if (!TOKEN) {
-    console.error('❌ DISCORD_TOKEN environment variable not found!');
+    console.error('❌ DISCORD_TOKEN not found!');
     process.exit(1);
 }
 
 app.listen(PORT, () => {
-    console.log(`🌐 API server running on port ${PORT}`);
-    
+    console.log(`🌐 API running on port ${PORT}`);
     client.login(TOKEN).catch(err => {
-        console.error('❌ Failed to login:', err);
+        console.error('❌ Login failed:', err);
         process.exit(1);
     });
 });
