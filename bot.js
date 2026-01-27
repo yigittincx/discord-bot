@@ -24,7 +24,7 @@ let config = {
     allowEveryone: false,
     allowedChannel: null,
     botAdmins: [],
-    leaderUserId: "1308721547740975124" // ✅ Lider ID'si buraya eklendi
+    leaderUserId: "1345492265765965884" // ✅ Lider ID'si buraya eklendi
 };
 
 let games = [];
@@ -837,3 +837,4 @@ app.listen(PORT, () => {
         process.exit(1);
     });
 });
+
