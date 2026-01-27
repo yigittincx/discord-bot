@@ -74,6 +74,29 @@ const commands = [
         ]
     },
     {
+        name: 'setadmin',
+        description: 'Manage bot admins (Admin only)',
+        options: [
+            {
+                name: 'action',
+                description: 'Action',
+                type: 3,
+                required: true,
+                choices: [
+                    { name: 'Add Admin', value: 'add' },
+                    { name: 'Remove Admin', value: 'remove' },
+                    { name: 'List Admins', value: 'list' }
+                ]
+            },
+            {
+                name: 'user',
+                description: 'User',
+                type: 6,
+                required: false
+            }
+        ]
+    },
+    {
         name: 'help',
         description: 'Help menu'
     },
