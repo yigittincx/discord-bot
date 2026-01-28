@@ -184,111 +184,114 @@ function formatUptime(ms) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧹 OTOMATIK TEMİZLEME SİSTEMİ - SADECE 404 HATASI
+// 🧹 OTOMATIK TEMİZLEME SİSTEMİ - 15 DAKİKADA BİR
 // ═══════════════════════════════════════════════════════════
 
 async function checkGameExists(gameId) {
     try {
-        console.log(`🔍 Checking if game ${gameId} exists...`);
+        console.log(`🔍 Checking game ${gameId}...`);
         
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         
-        // SADECE 404 durumunda oyunu sil
+        console.log(`📡 Universe API Response: ${universeResponse.status}`);
+        
+        // SADECE 404 = deleted
         if (universeResponse.status === 404) {
-            console.log(`❌ Game ${gameId} - Deleted (404)`);
+            console.log(`❌ Game ${gameId} is DELETED (404)`);
             return false;
         }
         
-        // Diğer tüm durumlarda oyunu koru (401, 403, 500, vb.)
+        // Diğer hatalar = oyunu koru
         if (!universeResponse.ok) {
-            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} (KEEPING - might be group restricted)`);
+            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - KEEPING`);
             return true;
         }
         
         const universeData = await universeResponse.json();
         
-        // universeId yoksa da oyunu koru (grup-kısıtlı olabilir)
         if (!universeData.universeId) {
-            console.log(`⚠️ Game ${gameId} - No universeId (KEEPING - might be private)`);
+            console.log(`⚠️ Game ${gameId} - No universeId - KEEPING (might be private)`);
             return true;
         }
         
-        // İkinci API çağrısı - yine sadece 404'te sil
         const universeId = universeData.universeId;
-        const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        const gameResponse = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         
-        if (response.status === 404) {
-            console.log(`❌ Game ${gameId} - Game data not found (404)`);
+        console.log(`📡 Games API Response: ${gameResponse.status}`);
+        
+        if (gameResponse.status === 404) {
+            console.log(`❌ Game ${gameId} data not found (404)`);
             return false;
         }
         
-        if (!response.ok) {
-            console.log(`⚠️ Game ${gameId} - Games API HTTP ${response.status} (KEEPING)`);
+        if (!gameResponse.ok) {
+            console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - KEEPING`);
             return true;
         }
         
-        const data = await response.json();
+        const data = await gameResponse.json();
         
         if (!data.data || data.data.length === 0) {
-            console.log(`⚠️ Game ${gameId} - Empty data (KEEPING - might be private)`);
+            console.log(`⚠️ Game ${gameId} - Empty data - KEEPING`);
             return true;
         }
         
-        console.log(`✅ Game ${gameId} exists!`);
+        console.log(`✅ Game ${gameId} EXISTS`);
         return true;
         
     } catch (error) {
         console.error(`❌ Error checking game ${gameId}:`, error.message);
-        
-        // Network hatalarında oyunu KORU
-        if (error.message.includes('fetch') || 
-            error.message.includes('ENOTFOUND') ||
-            error.message.includes('ETIMEDOUT') ||
-            error.message.includes('ECONNREFUSED')) {
-            console.log(`⚠️ Network error for ${gameId} - KEEPING game`);
-            return true;
-        }
-        
-        // Diğer beklenmedik hatalar - güvenli tarafta kal, oyunu koru
-        console.log(`⚠️ Unknown error for ${gameId} - KEEPING game as safe`);
+        console.log(`⚠️ Network error for ${gameId} - KEEPING game as safe`);
         return true;
     }
 }
 
 async function autoCleanupDeletedGames() {
-    console.log('🧹 Starting auto-cleanup...');
-    console.log(`📊 Total games to check: ${games.length}`);
+    console.log('\n════════════════════════════════════════');
+    console.log('🧹 AUTO-CLEANUP STARTED');
+    console.log(`🕐 Time: ${new Date().toLocaleString()}`);
+    console.log(`📊 Total games: ${games.length}`);
+    console.log('════════════════════════════════════════\n');
+    
+    if (games.length === 0) {
+        console.log('✅ No games to check!\n');
+        return;
+    }
     
     const deletedGames = [];
-    const keptGames = [];
     
-    for (const game of games) {
+    for (let i = 0; i < games.length; i++) {
+        const game = games[i];
+        console.log(`\n[${i + 1}/${games.length}] Checking: ${game.name} (${game.id})`);
+        
         const exists = await checkGameExists(game.id);
         
         if (!exists) {
-            console.log(`🗑️ WILL DELETE: ${game.id} (${game.name}) - Added by ${game.addedBy}`);
+            console.log(`🗑️ MARKED FOR DELETION: ${game.name}`);
             deletedGames.push(game);
         } else {
-            console.log(`✅ KEEPING: ${game.id} (${game.name})`);
-            keptGames.push(game);
+            console.log(`✅ KEEPING: ${game.name}`);
         }
         
-        // Rate limiting - Roblox API için
+        // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    console.log(`\n📈 CLEANUP SUMMARY:`);
-    console.log(`✅ Kept: ${keptGames.length}`);
-    console.log(`❌ Deleted: ${deletedGames.length}\n`);
+    console.log('\n════════════════════════════════════════');
+    console.log('📈 CLEANUP SUMMARY:');
+    console.log(`✅ Kept: ${games.length - deletedGames.length}`);
+    console.log(`❌ Deleted: ${deletedGames.length}`);
+    console.log('════════════════════════════════════════\n');
     
     if (deletedGames.length > 0) {
         games = games.filter(g => !deletedGames.find(d => d.id === g.id));
         saveGames();
         
-        console.log(`✅ Auto-cleanup complete! Removed ${deletedGames.length} deleted game(s).`);
+        console.log(`✅ Removed ${deletedGames.length} game(s) from database`);
         
         for (const game of deletedGames) {
             try {
+                console.log(`📧 Sending notification to ${game.addedBy}...`);
                 const user = await client.users.fetch(game.addedByUserId);
                 
                 const embed = new EmbedBuilder()
@@ -300,18 +303,20 @@ async function autoCleanupDeletedGames() {
                         { name: '🆔 Game ID', value: game.id, inline: true },
                         { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
                     )
-                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup System' })
+                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup' })
                     .setTimestamp();
                 
                 await user.send({ embeds: [embed] });
-                console.log(`📧 Notification sent to ${game.addedBy}`);
+                console.log(`✅ Notified ${game.addedBy}`);
             } catch (error) {
-                console.error(`❌ Could not notify ${game.addedBy}:`, error.message);
+                console.error(`❌ Failed to notify ${game.addedBy}:`, error.message);
             }
         }
     } else {
-        console.log('✅ Auto-cleanup complete! No deleted games found.');
+        console.log('✅ No deleted games found. All games are valid!');
     }
+    
+    console.log('\n🧹 AUTO-CLEANUP FINISHED\n');
 }
 
 client.once('ready', () => {
@@ -319,16 +324,22 @@ client.once('ready', () => {
     loadGames();
     loadConfig();
     
-    // İlk kontrol 10 saniye sonra
+    console.log('\n⏰ Auto-cleanup schedule:');
+    console.log('   📍 First run: in 30 seconds');
+    console.log('   🔁 Repeat: every 15 minutes\n');
+    
+    // İlk kontrol 30 saniye sonra
     setTimeout(() => {
+        console.log('🚀 Running first auto-cleanup...\n');
         autoCleanupDeletedGames();
-    }, 10000);
+    }, 30000);
+    
+    // Her 15 dakikada bir
+    setInterval(() => {
+        console.log('🚀 Running scheduled auto-cleanup...\n');
+        autoCleanupDeletedGames();
+    }, 15 * 60 * 1000); // 15 dakika
 });
-
-// Her 30 dakikada bir otomatik kontrol
-setInterval(() => {
-    autoCleanupDeletedGames();
-}, 30 * 60 * 1000);
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
@@ -764,7 +775,7 @@ client.on('interactionCreate', async interaction => {
                     inline: false
                 }
             )
-            .setFooter({ text: 'Retreat Gateway' })
+            .setFooter({ text: 'Retreat Gateway - Auto-cleanup every 15 minutes' })
             .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
@@ -1061,7 +1072,7 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// 🌐 API ENDPOINTS - GENRE DESTEĞİYLE
+// 🌐 API ENDPOINTS
 // ═══════════════════════════════════════════════════════════
 
 app.get('/api/test', (req, res) => {
