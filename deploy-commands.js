@@ -7,12 +7,27 @@ const commands = [
     {
         name: 'addgame',
         description: 'Add Your Game',
-        options: [{
-            name: 'gameid',
-            description: 'Game ID (example: 606849621)',
-            type: 3,
-            required: true
-        }]
+        options: [
+            {
+                name: 'gameid',
+                description: 'Game ID (example: 606849621)',
+                type: 3,
+                required: true
+            },
+            {
+                name: 'genre',
+                description: 'Select game genre',
+                type: 3,
+                required: true,
+                choices: [
+                    { name: '⚔️ Official', value: 'Official' },
+                    { name: '🗡️ SwordFight', value: 'SwordFight' },
+                    { name: '🔫 Crim', value: 'Crim' },
+                    { name: '👋 Slap', value: 'Slap' },
+                    { name: '🐐 Goat', value: 'Goat' }
+                ]
+            }
+        ]
     },
     {
         name: 'removegame',
