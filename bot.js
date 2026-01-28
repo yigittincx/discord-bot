@@ -9,10 +9,16 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
+// ✅ GÜNCELLENMİŞ CORS AYARLARI
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    
     next();
 });
 
@@ -176,9 +182,7 @@ client.once('ready', () => {
 });
 
 client.on('interactionCreate', async interaction => {
-    // Button tıklamaları için
     if (interaction.isButton()) {
-        // ✅ CUSTOMIZE BUTTON
         if (interaction.customId.startsWith('customize_')) {
             const gameId = interaction.customId.split('_')[1];
             
@@ -191,7 +195,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
             
-            // ✅ SADECE User ID ile kontrol - oyunu ekleyen kişi
             if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
                     content: '❌ You can only customize your own games!',
@@ -199,7 +202,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
             
-            // Modal oluştur
             const modal = new ModalBuilder()
                 .setCustomId(`customizeModal_${gameId}`)
                 .setTitle('✨ Customize Your Game');
@@ -230,7 +232,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.showModal(modal);
         }
         
-        // ✅ SEND LINK BUTTON
         if (interaction.customId.startsWith('sendlink_')) {
             const gameId = interaction.customId.split('_')[1];
             
@@ -243,7 +244,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
             
-            // ✅ SADECE User ID ile kontrol - oyunu ekleyen kişi
             if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
                     content: '❌ You can only send links for your own games!',
@@ -257,7 +257,6 @@ client.on('interactionCreate', async interaction => {
                 const leader = await client.users.fetch(config.leaderUserId);
                 const gameLink = `https://www.roblox.com/games/${gameId}`;
                 
-                // ✅ Güncel player sayısını çek
                 const stats = await getGameStats(gameId);
                 
                 const dmEmbed = new EmbedBuilder()
@@ -291,7 +290,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
     
-    // Modal submit için
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('customizeModal_')) {
             const gameId = interaction.customId.split('_')[1];
@@ -310,7 +308,6 @@ client.on('interactionCreate', async interaction => {
             const oldName = game.customName || game.name;
             const oldDesc = game.customDescription || 'No description';
             
-            // Boş değilse güncelle
             if (customName.trim()) {
                 game.customName = customName.trim();
             }
@@ -356,7 +353,6 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    // Channel restriction check - except for setchannel and admin commands
     const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats', 'customizegame'];
     if (channelRestrictedCommands.includes(commandName)) {
         if (config.allowedChannel && interaction.channelId !== config.allowedChannel) {
@@ -398,7 +394,6 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // ✅ SADECE User ID ile kontrol
         if (game.addedByUserId !== interaction.user.id) {
             return interaction.reply({
                 content: `❌ You can only customize your own games!\nThis game was added by **${game.addedBy}**`,
@@ -406,11 +401,9 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // Önceki değerleri sakla
         const oldName = game.customName || game.name;
         const oldDesc = game.customDescription || 'No description';
 
-        // Custom değerleri güncelle
         if (customName) {
             game.customName = customName;
         }
@@ -674,7 +667,6 @@ client.on('interactionCreate', async interaction => {
             };
         }
 
-        // ✅ Oyunu kaydet - playing/maxPlayers her zaman API'den çekilecek
         games.push({
             id: gameInfo.id,
             name: gameInfo.name,
@@ -731,7 +723,6 @@ client.on('interactionCreate', async interaction => {
 
         const game = games[gameIndex];
         
-        // ✅ User ID ile kontrol - admin de silebilir
         if (game.addedByUserId !== interaction.user.id && !isBotAdmin(interaction.member)) {
             return interaction.reply({
                 content: `❌ You can only remove your own games!\nThis was added by **${game.addedBy}**`,
@@ -805,8 +796,20 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
+// ✅ YENİ: Test endpoint
+app.get('/api/test', (req, res) => {
+    console.log('🧪 Test endpoint hit!');
+    res.json({ 
+        success: true,
+        message: 'API is working perfectly!',
+        timestamp: Date.now(),
+        botOnline: client.user ? true : false
+    });
+});
+
 app.get('/api/games', async (req, res) => {
-    // Her oyun için güncel player count'u çek
+    console.log('📥 Games endpoint hit!');
+    
     const gamesWithStats = await Promise.all(
         games.map(async (g) => {
             const stats = await getGameStats(g.id);
@@ -842,7 +845,7 @@ app.get('/api/health', (req, res) => {
 app.get('/', (req, res) => {
     res.json({ 
         message: 'Retreat Gateway Bot API',
-        endpoints: ['/api/games', '/api/health']
+        endpoints: ['/api/games', '/api/health', '/api/test']
     });
 });
 
