@@ -898,8 +898,17 @@ client.on('interactionCreate', async interaction => {
     }
 });
 app.get('/api/games', async (req, res) => {
+    const genreFilter = req.query.genre; // ?genre=swordfight gibi
+    
+    let filteredGames = games;
+    
+    // Eğer genre parametresi varsa filtrele
+    if (genreFilter) {
+        filteredGames = games.filter(g => g.genre === genreFilter.toLowerCase());
+    }
+    
     const gamesWithStats = await Promise.all(
-        games.map(async (g) => {
+        filteredGames.map(async (g) => {
             const stats = await getGameStats(g.id);
             return {
                 id: g.id,
@@ -907,7 +916,7 @@ app.get('/api/games', async (req, res) => {
                 originalName: g.name,
                 creator: g.creator,
                 description: g.customDescription || null,
-                genre: g.genre || null, // ⭐ Genre eklendi
+                genre: g.genre || null,
                 uptime: Date.now() - g.addedAt,
                 uptimeFormatted: formatUptime(Date.now() - g.addedAt),
                 playing: stats.playing,
@@ -919,7 +928,34 @@ app.get('/api/games', async (req, res) => {
 
     res.json({
         success: true,
-        games: gamesWithStats
+        games: gamesWithStats,
+        genre: genreFilter || 'all'
+    });
+});
+
+// ⭐ YENİ: Genre'lere göre oyun sayıları
+app.get('/api/genres', (req, res) => {
+    const genreCounts = {
+        swordfight: 0,
+        goat: 0,
+        crim: 0,
+        slap: 0,
+        official: 0,
+        unassigned: 0
+    };
+    
+    games.forEach(game => {
+        if (game.genre) {
+            genreCounts[game.genre] = (genreCounts[game.genre] || 0) + 1;
+        } else {
+            genreCounts.unassigned++;
+        }
+    });
+    
+    res.json({
+        success: true,
+        genres: genreCounts,
+        total: games.length
     });
 });
 
@@ -934,7 +970,11 @@ app.get('/api/health', (req, res) => {
 app.get('/', (req, res) => {
     res.json({ 
         message: 'Retreat Gateway Bot API',
-        endpoints: ['/api/games', '/api/health']
+        endpoints: [
+            '/api/games - Get all games (or ?genre=swordfight for specific genre)',
+            '/api/genres - Get game counts by genre',
+            '/api/health - Bot health check'
+        ]
     });
 });
 
