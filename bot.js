@@ -184,7 +184,7 @@ function formatUptime(ms) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧹 OTOMATIK TEMİZLEME SİSTEMİ
+// 🧹 OTOMATIK TEMİZLEME SİSTEMİ - SADECE 404 HATASI
 // ═══════════════════════════════════════════════════════════
 
 async function checkGameExists(gameId) {
@@ -287,7 +287,6 @@ async function autoCleanupDeletedGames() {
         
         console.log(`✅ Auto-cleanup complete! Removed ${deletedGames.length} deleted game(s).`);
         
-        // Kullanıcılara bildirim gönder
         for (const game of deletedGames) {
             try {
                 const user = await client.users.fetch(game.addedByUserId);
@@ -296,33 +295,6 @@ async function autoCleanupDeletedGames() {
                     .setColor(0xFF6B6B)
                     .setTitle('🗑️ Game Automatically Removed')
                     .setDescription('One of your games was removed because it no longer exists on Roblox (404 Error).')
-                    .addFields(
-                        { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
-                        { name: '🆔 Game ID', value: game.id, inline: true },
-                        { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
-                    )
-                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup System' })
-                    .setTimestamp();
-                
-                await user.send({ embeds: [embed] });
-                console.log(`📧 Notification sent to ${game.addedBy}`);
-            } catch (error) {
-                console.error(`❌ Could not notify ${game.addedBy}:`, error.message);
-            }
-        }
-    } else {
-        console.log('✅ Auto-cleanup complete! No deleted games found.');
-    }
-}
-        
-        for (const game of deletedGames) {
-            try {
-                const user = await client.users.fetch(game.addedByUserId);
-                
-                const embed = new EmbedBuilder()
-                    .setColor(0xFF6B6B)
-                    .setTitle('🗑️ Game Automatically Removed')
-                    .setDescription('One of your games was removed because it no longer exists on Roblox.')
                     .addFields(
                         { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
                         { name: '🆔 Game ID', value: game.id, inline: true },
@@ -583,7 +555,7 @@ client.on('interactionCreate', async interaction => {
                 validGames.push(game);
             }
 
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         if (deletedGames.length > 0) {
@@ -913,10 +885,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // 🎮 ADDGAME - YENİ GENRE SİSTEMİ
-    // ═══════════════════════════════════════════════════════════
-
     if (commandName === 'addgame') {
         const gameIdInput = interaction.options.getString('gameid');
         const genre = interaction.options.getString('genre');
@@ -954,7 +922,7 @@ client.on('interactionCreate', async interaction => {
             id: gameInfo.id,
             name: gameInfo.name,
             creator: gameInfo.creator,
-            genre: genre, // 🎯 GENRE EKLENDİ
+            genre: genre,
             addedBy: interaction.user.tag,
             addedByUserId: interaction.user.id,
             addedAt: Date.now(),
@@ -1038,7 +1006,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply('🔭 No games yet!');
         }
 
-        // Genre'ye göre gruplandır
         const gamesByGenre = {};
         games.forEach(game => {
             if (!gamesByGenre[game.genre]) {
@@ -1118,7 +1085,7 @@ app.get('/api/games', async (req, res) => {
                 name: g.customName || g.name,
                 originalName: g.name,
                 creator: g.creator,
-                genre: g.genre, // 🎯 GENRE EKLENDİ
+                genre: g.genre,
                 description: g.customDescription || null,
                 uptime: Date.now() - g.addedAt,
                 uptimeFormatted: formatUptime(Date.now() - g.addedAt),
@@ -1162,4 +1129,3 @@ app.listen(PORT, () => {
         process.exit(1);
     });
 });
-
