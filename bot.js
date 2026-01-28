@@ -9,7 +9,6 @@ const client = new Client({
 const app = express();
 app.use(express.json());
 
-// ✅ GÜNCELLENMİŞ CORS AYARLARI
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -175,11 +174,98 @@ function formatUptime(ms) {
     return `${seconds}s`;
 }
 
+// ═══════════════════════════════════════════════════════════
+// 🧹 OTOMATIK TEMİZLEME SİSTEMİ
+// ═══════════════════════════════════════════════════════════
+
+async function checkGameExists(gameId) {
+    try {
+        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        const universeData = await universeResponse.json();
+        
+        if (!universeData.universeId) {
+            return false;
+        }
+        
+        const universeId = universeData.universeId;
+        const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        const data = await response.json();
+        
+        if (!data.data || data.data.length === 0) {
+            return false;
+        }
+        
+        return true;
+    } catch (error) {
+        console.error(`❌ Error checking game ${gameId}:`, error);
+        return true;
+    }
+}
+
+async function autoCleanupDeletedGames() {
+    console.log('🧹 Starting auto-cleanup...');
+    
+    const deletedGames = [];
+    
+    for (const game of games) {
+        const exists = await checkGameExists(game.id);
+        
+        if (!exists) {
+            console.log(`🗑️ Game ${game.id} (${game.name}) is deleted from Roblox!`);
+            deletedGames.push(game);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    if (deletedGames.length > 0) {
+        games = games.filter(g => !deletedGames.find(d => d.id === g.id));
+        saveGames();
+        
+        console.log(`✅ Auto-cleanup complete! Removed ${deletedGames.length} deleted game(s).`);
+        
+        for (const game of deletedGames) {
+            try {
+                const user = await client.users.fetch(game.addedByUserId);
+                
+                const embed = new EmbedBuilder()
+                    .setColor(0xFF6B6B)
+                    .setTitle('🗑️ Game Automatically Removed')
+                    .setDescription('One of your games was removed because it no longer exists on Roblox.')
+                    .addFields(
+                        { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
+                        { name: '🆔 Game ID', value: game.id, inline: true },
+                        { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
+                    )
+                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup System' })
+                    .setTimestamp();
+                
+                await user.send({ embeds: [embed] });
+                console.log(`📧 Notification sent to ${game.addedBy}`);
+            } catch (error) {
+                console.error(`❌ Could not notify ${game.addedBy}:`, error.message);
+            }
+        }
+    } else {
+        console.log('✅ Auto-cleanup complete! No deleted games found.');
+    }
+}
+
 client.once('ready', () => {
     console.log(`✅ Bot is online as ${client.user.tag}`);
     loadGames();
     loadConfig();
+    
+    // İlk kontrol 10 saniye sonra
+    setTimeout(() => {
+        autoCleanupDeletedGames();
+    }, 10000);
 });
+
+// Her 30 dakikada bir otomatik kontrol
+setInterval(() => {
+    autoCleanupDeletedGames();
+}, 30 * 60 * 1000);
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
@@ -353,7 +439,7 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats', 'customizegame'];
+    const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats', 'customizegame', 'checkgames'];
     if (channelRestrictedCommands.includes(commandName)) {
         if (config.allowedChannel && interaction.channelId !== config.allowedChannel) {
             const channel = interaction.guild.channels.cache.get(config.allowedChannel);
@@ -372,12 +458,93 @@ client.on('interactionCreate', async interaction => {
         });
     }
     
-    const adminCommands = ['setroles', 'setchannel', 'setadmin'];
+    const adminCommands = ['setroles', 'setchannel', 'setadmin', 'checkgames'];
     if (adminCommands.includes(commandName) && !isBotAdmin(interaction.member)) {
         return interaction.reply({
             content: '❌ Only bot admins can use this command!',
             ephemeral: true
         });
+    }
+
+    if (commandName === 'checkgames') {
+        await interaction.deferReply();
+
+        const embed = new EmbedBuilder()
+            .setColor(0xFFA500)
+            .setTitle('🔍 Checking All Games...')
+            .setDescription('Please wait while I verify all games...')
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+        const deletedGames = [];
+        const validGames = [];
+
+        for (const game of games) {
+            const exists = await checkGameExists(game.id);
+
+            if (!exists) {
+                deletedGames.push(game);
+            } else {
+                validGames.push(game);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        if (deletedGames.length > 0) {
+            games = validGames;
+            saveGames();
+
+            const deletedList = deletedGames
+                .map(g => `• **${g.customName || g.name}** (ID: ${g.id}) - Added by ${g.addedBy}`)
+                .join('\n');
+
+            const resultEmbed = new EmbedBuilder()
+                .setColor(0xFF0000)
+                .setTitle('🗑️ Deleted Games Found & Removed')
+                .setDescription(deletedList)
+                .addFields(
+                    { name: 'Total Checked', value: `${games.length + deletedGames.length}`, inline: true },
+                    { name: 'Valid Games', value: `${validGames.length}`, inline: true },
+                    { name: 'Deleted Games', value: `${deletedGames.length}`, inline: true }
+                )
+                .setFooter({ text: 'Games have been automatically removed from the hub' })
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [resultEmbed] });
+
+            for (const game of deletedGames) {
+                try {
+                    const user = await client.users.fetch(game.addedByUserId);
+
+                    const notifEmbed = new EmbedBuilder()
+                        .setColor(0xFF6B6B)
+                        .setTitle('🗑️ Your Game Was Removed')
+                        .setDescription('One of your games was removed because it no longer exists on Roblox.')
+                        .addFields(
+                            { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
+                            { name: '🆔 Game ID', value: game.id, inline: true }
+                        )
+                        .setTimestamp();
+
+                    await user.send({ embeds: [notifEmbed] });
+                } catch (error) {
+                    console.error(`Could not notify user:`, error.message);
+                }
+            }
+        } else {
+            const resultEmbed = new EmbedBuilder()
+                .setColor(0x00FF00)
+                .setTitle('✅ All Games Valid')
+                .setDescription('All games in the hub are still active on Roblox!')
+                .addFields(
+                    { name: 'Total Games Checked', value: `${games.length}`, inline: true }
+                )
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [resultEmbed] });
+        }
     }
 
     if (commandName === 'customizegame') {
@@ -512,7 +679,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 {
                     name: '🎮 Game Commands',
-                    value: '`/addgame` - Add game\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all',
+                    value: '`/addgame` - Add game\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check deleted games',
                     inline: false
                 },
                 {
@@ -701,7 +868,7 @@ client.on('interactionCreate', async interaction => {
 
         const sendLinkButton = new ButtonBuilder()
             .setCustomId(`sendlink_${gameId}`)
-            .setLabel('📤 Send Link to Leader')
+            .setLabel('📤 Send Link to profound')
             .setStyle(ButtonStyle.Success)
             .setEmoji('🔗');
 
@@ -796,7 +963,6 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// ✅ YENİ: Test endpoint
 app.get('/api/test', (req, res) => {
     console.log('🧪 Test endpoint hit!');
     res.json({ 
