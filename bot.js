@@ -189,49 +189,131 @@ function formatUptime(ms) {
 
 async function checkGameExists(gameId) {
     try {
-        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
-        const universeData = await universeResponse.json();
+        console.log(`🔍 Checking if game ${gameId} exists...`);
         
-        if (!universeData.universeId) {
+        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        
+        // SADECE 404 durumunda oyunu sil
+        if (universeResponse.status === 404) {
+            console.log(`❌ Game ${gameId} - Deleted (404)`);
             return false;
         }
         
+        // Diğer tüm durumlarda oyunu koru (401, 403, 500, vb.)
+        if (!universeResponse.ok) {
+            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} (KEEPING - might be group restricted)`);
+            return true;
+        }
+        
+        const universeData = await universeResponse.json();
+        
+        // universeId yoksa da oyunu koru (grup-kısıtlı olabilir)
+        if (!universeData.universeId) {
+            console.log(`⚠️ Game ${gameId} - No universeId (KEEPING - might be private)`);
+            return true;
+        }
+        
+        // İkinci API çağrısı - yine sadece 404'te sil
         const universeId = universeData.universeId;
         const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        
+        if (response.status === 404) {
+            console.log(`❌ Game ${gameId} - Game data not found (404)`);
+            return false;
+        }
+        
+        if (!response.ok) {
+            console.log(`⚠️ Game ${gameId} - Games API HTTP ${response.status} (KEEPING)`);
+            return true;
+        }
+        
         const data = await response.json();
         
         if (!data.data || data.data.length === 0) {
-            return false;
+            console.log(`⚠️ Game ${gameId} - Empty data (KEEPING - might be private)`);
+            return true;
         }
         
+        console.log(`✅ Game ${gameId} exists!`);
         return true;
+        
     } catch (error) {
-        console.error(`❌ Error checking game ${gameId}:`, error);
+        console.error(`❌ Error checking game ${gameId}:`, error.message);
+        
+        // Network hatalarında oyunu KORU
+        if (error.message.includes('fetch') || 
+            error.message.includes('ENOTFOUND') ||
+            error.message.includes('ETIMEDOUT') ||
+            error.message.includes('ECONNREFUSED')) {
+            console.log(`⚠️ Network error for ${gameId} - KEEPING game`);
+            return true;
+        }
+        
+        // Diğer beklenmedik hatalar - güvenli tarafta kal, oyunu koru
+        console.log(`⚠️ Unknown error for ${gameId} - KEEPING game as safe`);
         return true;
     }
 }
 
 async function autoCleanupDeletedGames() {
     console.log('🧹 Starting auto-cleanup...');
+    console.log(`📊 Total games to check: ${games.length}`);
     
     const deletedGames = [];
+    const keptGames = [];
     
     for (const game of games) {
         const exists = await checkGameExists(game.id);
         
         if (!exists) {
-            console.log(`🗑️ Game ${game.id} (${game.name}) is deleted from Roblox!`);
+            console.log(`🗑️ WILL DELETE: ${game.id} (${game.name}) - Added by ${game.addedBy}`);
             deletedGames.push(game);
+        } else {
+            console.log(`✅ KEEPING: ${game.id} (${game.name})`);
+            keptGames.push(game);
         }
         
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Rate limiting - Roblox API için
+        await new Promise(resolve => setTimeout(resolve, 1000));
     }
+    
+    console.log(`\n📈 CLEANUP SUMMARY:`);
+    console.log(`✅ Kept: ${keptGames.length}`);
+    console.log(`❌ Deleted: ${deletedGames.length}\n`);
     
     if (deletedGames.length > 0) {
         games = games.filter(g => !deletedGames.find(d => d.id === g.id));
         saveGames();
         
         console.log(`✅ Auto-cleanup complete! Removed ${deletedGames.length} deleted game(s).`);
+        
+        // Kullanıcılara bildirim gönder
+        for (const game of deletedGames) {
+            try {
+                const user = await client.users.fetch(game.addedByUserId);
+                
+                const embed = new EmbedBuilder()
+                    .setColor(0xFF6B6B)
+                    .setTitle('🗑️ Game Automatically Removed')
+                    .setDescription('One of your games was removed because it no longer exists on Roblox (404 Error).')
+                    .addFields(
+                        { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
+                        { name: '🆔 Game ID', value: game.id, inline: true },
+                        { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
+                    )
+                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup System' })
+                    .setTimestamp();
+                
+                await user.send({ embeds: [embed] });
+                console.log(`📧 Notification sent to ${game.addedBy}`);
+            } catch (error) {
+                console.error(`❌ Could not notify ${game.addedBy}:`, error.message);
+            }
+        }
+    } else {
+        console.log('✅ Auto-cleanup complete! No deleted games found.');
+    }
+}
         
         for (const game of deletedGames) {
             try {
@@ -1080,3 +1162,4 @@ app.listen(PORT, () => {
         process.exit(1);
     });
 });
+
