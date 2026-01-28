@@ -2,6 +2,7 @@ const { REST, Routes } = require('discord.js');
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = '1465302232001151170';
 const GUILD_ID = '1465302756976758786';
+
 const commands = [
     {
         name: 'addgame',
@@ -56,6 +57,10 @@ const commands = [
     {
         name: 'cleargames',
         description: 'Clear All Games'
+    },
+    {
+        name: 'checkgames',
+        description: '🔍 Check all games and remove deleted ones (Admin only)'
     },
     {
         name: 'setroles',
@@ -131,11 +136,14 @@ const commands = [
         description: 'Statistics'
     }
 ];
+
 if (!TOKEN) {
     console.error('❌ DISCORD_TOKEN not found!');
     process.exit(1);
 }
+
 const rest = new REST({ version: '10' }).setToken(TOKEN);
+
 (async () => {
     try {
         console.log('🔄 Registering commands...');
@@ -144,7 +152,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
             { body: commands }
         );
         
-        console.log('✅ Commands registered!');
+        console.log('✅ Commands registered successfully!');
     } catch (error) {
         console.error('❌ Error:', error);
         process.exit(1);
