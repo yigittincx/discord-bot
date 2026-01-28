@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
 
@@ -169,6 +169,17 @@ function formatUptime(ms) {
     return `${seconds}s`;
 }
 
+function getGenreEmoji(genre) {
+    const emojis = {
+        'swordfight': '⚔️',
+        'goat': '🐐',
+        'crim': '🔫',
+        'slap': '👋',
+        'official': '⭐'
+    };
+    return emojis[genre] || '🎮';
+}
+
 client.once('ready', () => {
     console.log(`✅ Bot is online as ${client.user.tag}`);
     loadGames();
@@ -176,6 +187,68 @@ client.once('ready', () => {
 });
 
 client.on('interactionCreate', async interaction => {
+    // ⭐ STRING SELECT MENU (Genre Selection)
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId.startsWith('selectgenre_')) {
+            const gameId = interaction.customId.split('_')[1];
+            const selectedGenre = interaction.values[0];
+            
+            const game = games.find(g => g.id === gameId);
+            
+            if (!game) {
+                return interaction.reply({
+                    content: '❌ Game not found!',
+                    ephemeral: true
+                });
+            }
+            
+            if (game.addedByUserId !== interaction.user.id) {
+                return interaction.reply({
+                    content: '❌ You can only set genre for your own games!',
+                    ephemeral: true
+                });
+            }
+            
+            game.genre = selectedGenre;
+            saveGames();
+            
+            const genreNames = {
+                'swordfight': 'Swordfight ⚔️',
+                'goat': 'GOAT 🐐',
+                'crim': 'Crime 🔫',
+                'slap': 'Slap 👋',
+                'official': 'Official ⭐'
+            };
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x00D9FF)
+                .setTitle('✅ Genre Set Successfully!')
+                .addFields(
+                    { name: '🎮 Game', value: game.customName || game.name, inline: true },
+                    { name: '🎯 Genre', value: genreNames[selectedGenre], inline: true }
+                )
+                .setDescription('**Now you can customize or share this game!**')
+                .setFooter({ text: 'Use the buttons below' })
+                .setTimestamp();
+            
+            const customizeButton = new ButtonBuilder()
+                .setCustomId(`customize_${gameId}`)
+                .setLabel('✨ Customize Game')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🎨');
+
+            const sendLinkButton = new ButtonBuilder()
+                .setCustomId(`sendlink_${gameId}`)
+                .setLabel('📤 Send Link to Leader')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('🔗');
+
+            const row = new ActionRowBuilder().addComponents(customizeButton, sendLinkButton);
+            
+            await interaction.update({ embeds: [embed], components: [row] });
+        }
+    }
+    
     // Button tıklamaları için
     if (interaction.isButton()) {
         // ✅ CUSTOMIZE BUTTON
@@ -191,7 +264,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
             
-            // ✅ SADECE User ID ile kontrol - oyunu ekleyen kişi
             if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
                     content: '❌ You can only customize your own games!',
@@ -243,7 +315,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
             
-            // ✅ SADECE User ID ile kontrol - oyunu ekleyen kişi
             if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
                     content: '❌ You can only send links for your own games!',
@@ -257,7 +328,6 @@ client.on('interactionCreate', async interaction => {
                 const leader = await client.users.fetch(config.leaderUserId);
                 const gameLink = `https://www.roblox.com/games/${gameId}`;
                 
-                // ✅ Güncel player sayısını çek
                 const stats = await getGameStats(gameId);
                 
                 const dmEmbed = new EmbedBuilder()
@@ -265,6 +335,7 @@ client.on('interactionCreate', async interaction => {
                     .setTitle('🎮 New Game Link from Hub!')
                     .addFields(
                         { name: '🎮 Game Name', value: game.customName || game.name, inline: false },
+                        { name: '🎯 Genre', value: game.genre ? getGenreEmoji(game.genre) + ' ' + game.genre.toUpperCase() : '❓ Not Set', inline: true },
                         { name: '🆔 Game ID', value: gameId, inline: true },
                         { name: '👤 Sent By', value: interaction.user.tag, inline: true },
                         { name: '👥 Players', value: `${stats.playing}/${stats.maxPlayers}`, inline: true },
@@ -310,7 +381,6 @@ client.on('interactionCreate', async interaction => {
             const oldName = game.customName || game.name;
             const oldDesc = game.customDescription || 'No description';
             
-            // Boş değilse güncelle
             if (customName.trim()) {
                 game.customName = customName.trim();
             }
@@ -356,7 +426,7 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    // Channel restriction check - except for setchannel and admin commands
+    // Channel restriction check
     const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats', 'customizegame'];
     if (channelRestrictedCommands.includes(commandName)) {
         if (config.allowedChannel && interaction.channelId !== config.allowedChannel) {
@@ -384,7 +454,109 @@ client.on('interactionCreate', async interaction => {
         });
     }
 
-    if (commandName === 'customizegame') {
+    if (commandName === 'addgame') {
+        const gameIdInput = interaction.options.getString('gameid');
+        const gameId = extractGameId(gameIdInput);
+
+        if (!gameId) {
+            return interaction.reply({
+                content: '❌ Invalid game ID!',
+                ephemeral: true
+            });
+        }
+
+        if (games.find(g => g.id === gameId)) {
+            return interaction.reply({
+                content: '❌ Already added!',
+                ephemeral: true
+            });
+        }
+
+        await interaction.deferReply();
+
+        let gameInfo = await getGameInfo(gameId);
+        
+        if (!gameInfo) {
+            gameInfo = {
+                id: gameId,
+                name: `Game ${gameId}`,
+                creator: 'Unknown',
+                playing: 0,
+                maxPlayers: 0
+            };
+        }
+
+        // ✅ Oyunu kaydet - genre henüz null
+        games.push({
+            id: gameInfo.id,
+            name: gameInfo.name,
+            creator: gameInfo.creator,
+            addedBy: interaction.user.tag,
+            addedByUserId: interaction.user.id,
+            addedAt: Date.now(),
+            customName: null,
+            customDescription: null,
+            genre: null // ⭐ YENİ: Genre başlangıçta null
+        });
+
+        saveGames();
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('✅ Game Added Successfully!')
+            .addFields(
+                { name: '🎮 Name', value: gameInfo.name, inline: true },
+                { name: '🆔 ID', value: gameId, inline: true },
+                { name: '👤 Creator', value: gameInfo.creator, inline: true },
+                { name: '👥 Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
+            )
+            .setDescription('**⚠️ Please select a genre for this game!**\nThen you can customize or share it.')
+            .setFooter({ text: 'Only you can use these buttons!' })
+            .setTimestamp();
+
+        // ⭐ Genre Select Menu
+        const genreSelect = new StringSelectMenuBuilder()
+            .setCustomId(`selectgenre_${gameId}`)
+            .setPlaceholder('🎯 Select a genre...')
+            .addOptions([
+                {
+                    label: '⚔️ Swordfight',
+                    description: 'Fighting games with swords',
+                    value: 'swordfight',
+                    emoji: '⚔️'
+                },
+                {
+                    label: '🐐 GOAT',
+                    description: 'Greatest Of All Time games',
+                    value: 'goat',
+                    emoji: '🐐'
+                },
+                {
+                    label: '🔫 Crime',
+                    description: 'Crime & cops games',
+                    value: 'crim',
+                    emoji: '🔫'
+                },
+                {
+                    label: '👋 Slap',
+                    description: 'Slap battles & similar',
+                    value: 'slap',
+                    emoji: '👋'
+                },
+                {
+                    label: '⭐ Official',
+                    description: 'Official Retreat games',
+                    value: 'official',
+                    emoji: '⭐'
+                }
+            ]);
+
+        const genreRow = new ActionRowBuilder().addComponents(genreSelect);
+
+        await interaction.editReply({ embeds: [embed], components: [genreRow] });
+    }
+
+    else if (commandName === 'customizegame') {
         const gameId = interaction.options.getString('gameid');
         const customName = interaction.options.getString('name');
         const customDesc = interaction.options.getString('description');
@@ -398,7 +570,6 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // ✅ SADECE User ID ile kontrol
         if (game.addedByUserId !== interaction.user.id) {
             return interaction.reply({
                 content: `❌ You can only customize your own games!\nThis game was added by **${game.addedBy}**`,
@@ -406,11 +577,9 @@ client.on('interactionCreate', async interaction => {
             });
         }
 
-        // Önceki değerleri sakla
         const oldName = game.customName || game.name;
         const oldDesc = game.customDescription || 'No description';
 
-        // Custom değerleri güncelle
         if (customName) {
             game.customName = customName;
         }
@@ -439,7 +608,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ embeds: [embed] });
     }
 
-    if (commandName === 'setadmin') {
+    else if (commandName === 'setadmin') {
         const action = interaction.options.getString('action');
         
         if (action === 'add') {
@@ -498,7 +667,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    if (commandName === 'setchannel') {
+    else if (commandName === 'setchannel') {
         const channel = interaction.options.getChannel('channel');
         
         if (channel) {
@@ -512,7 +681,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    if (commandName === 'help') {
+    else if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
             .setTitle('🤖 Retreat Gateway Bot')
@@ -539,7 +708,7 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ embeds: [embed] });
     }
 
-    if (commandName === 'stats') {
+    else if (commandName === 'stats') {
         const userStats = {};
         games.forEach(game => {
             userStats[game.addedBy] = (userStats[game.addedBy] || 0) + 1;
@@ -571,7 +740,7 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ embeds: [embed] });
     }
 
-    if (commandName === 'setroles') {
+    else if (commandName === 'setroles') {
         const action = interaction.options.getString('action');
         
         if (action === 'add') {
@@ -642,82 +811,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    if (commandName === 'addgame') {
-        const gameIdInput = interaction.options.getString('gameid');
-        const gameId = extractGameId(gameIdInput);
-
-        if (!gameId) {
-            return interaction.reply({
-                content: '❌ Invalid game ID!',
-                ephemeral: true
-            });
-        }
-
-        if (games.find(g => g.id === gameId)) {
-            return interaction.reply({
-                content: '❌ Already added!',
-                ephemeral: true
-            });
-        }
-
-        await interaction.deferReply();
-
-        let gameInfo = await getGameInfo(gameId);
-        
-        if (!gameInfo) {
-            gameInfo = {
-                id: gameId,
-                name: `Game ${gameId}`,
-                creator: 'Unknown',
-                playing: 0,
-                maxPlayers: 0
-            };
-        }
-
-        // ✅ Oyunu kaydet - playing/maxPlayers her zaman API'den çekilecek
-        games.push({
-            id: gameInfo.id,
-            name: gameInfo.name,
-            creator: gameInfo.creator,
-            addedBy: interaction.user.tag,
-            addedByUserId: interaction.user.id,
-            addedAt: Date.now(),
-            customName: null,
-            customDescription: null
-        });
-
-        saveGames();
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('✅ Game Added Successfully!')
-            .addFields(
-                { name: '🎮 Name', value: gameInfo.name, inline: true },
-                { name: '🆔 ID', value: gameId, inline: true },
-                { name: '👤 Creator', value: gameInfo.creator, inline: true },
-                { name: '👥 Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
-            )
-            .setDescription('**Customize or share this game!**\nUse the buttons below:')
-            .setFooter({ text: 'Only you can use these buttons!' })
-            .setTimestamp();
-
-        const customizeButton = new ButtonBuilder()
-            .setCustomId(`customize_${gameId}`)
-            .setLabel('✨ Customize Game')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('🎨');
-
-        const sendLinkButton = new ButtonBuilder()
-            .setCustomId(`sendlink_${gameId}`)
-            .setLabel('📤 Send Link to Leader')
-            .setStyle(ButtonStyle.Success)
-            .setEmoji('🔗');
-
-        const row = new ActionRowBuilder().addComponents(customizeButton, sendLinkButton);
-
-        await interaction.editReply({ embeds: [embed], components: [row] });
-    }
-
     else if (commandName === 'removegame') {
         const gameId = interaction.options.getString('gameid');
         const gameIndex = games.findIndex(g => g.id === gameId);
@@ -731,7 +824,6 @@ client.on('interactionCreate', async interaction => {
 
         const game = games[gameIndex];
         
-        // ✅ User ID ile kontrol - admin de silebilir
         if (game.addedByUserId !== interaction.user.id && !isBotAdmin(interaction.member)) {
             return interaction.reply({
                 content: `❌ You can only remove your own games!\nThis was added by **${game.addedBy}**`,
@@ -772,8 +864,9 @@ client.on('interactionCreate', async interaction => {
             
             const displayName = game.customName || game.name;
             const hasCustomization = game.customName || game.customDescription ? ' ✨' : '';
+            const genreText = game.genre ? `${getGenreEmoji(game.genre)} ${game.genre.toUpperCase()}` : '❓ No Genre';
             
-            let fieldValue = `**ID:** ${game.id}\n**Added by:** ${game.addedBy}\n**⏱️ Uptime:** ${uptimeText}\n**👥 Players:** ${stats.playing}/${stats.maxPlayers}`;
+            let fieldValue = `**ID:** ${game.id}\n**Genre:** ${genreText}\n**Added by:** ${game.addedBy}\n**⏱️ Uptime:** ${uptimeText}\n**👥 Players:** ${stats.playing}/${stats.maxPlayers}`;
             
             if (game.customDescription) {
                 fieldValue += `\n**📄 Description:** ${game.customDescription}`;
@@ -804,9 +897,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply(`🗑️ Cleared ${count} game(s)!`);
     }
 });
-
 app.get('/api/games', async (req, res) => {
-    // Her oyun için güncel player count'u çek
     const gamesWithStats = await Promise.all(
         games.map(async (g) => {
             const stats = await getGameStats(g.id);
@@ -816,6 +907,7 @@ app.get('/api/games', async (req, res) => {
                 originalName: g.name,
                 creator: g.creator,
                 description: g.customDescription || null,
+                genre: g.genre || null, // ⭐ Genre eklendi
                 uptime: Date.now() - g.addedAt,
                 uptimeFormatted: formatUptime(Date.now() - g.addedAt),
                 playing: stats.playing,
