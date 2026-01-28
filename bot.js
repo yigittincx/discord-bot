@@ -34,6 +34,15 @@ let config = {
 
 let games = [];
 
+// 🎮 GENRE İKONLARI
+const GENRE_ICONS = {
+    'Official': '⚔️',
+    'SwordFight': '🗡️',
+    'Crim': '🔫',
+    'Slap': '👋',
+    'Goat': '🐐'
+};
+
 function loadGames() {
     try {
         if (fs.existsSync('games.json')) {
@@ -345,11 +354,14 @@ client.on('interactionCreate', async interaction => {
                 
                 const stats = await getGameStats(gameId);
                 
+                const genreIcon = GENRE_ICONS[game.genre] || '🎮';
+                
                 const dmEmbed = new EmbedBuilder()
                     .setColor(0x00FF00)
                     .setTitle('🎮 New Game Link from Hub!')
                     .addFields(
                         { name: '🎮 Game Name', value: game.customName || game.name, inline: false },
+                        { name: `${genreIcon} Genre`, value: game.genre, inline: true },
                         { name: '🆔 Game ID', value: gameId, inline: true },
                         { name: '👤 Sent By', value: interaction.user.tag, inline: true },
                         { name: '👥 Players', value: `${stats.playing}/${stats.maxPlayers}`, inline: true },
@@ -679,7 +691,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 {
                     name: '🎮 Game Commands',
-                    value: '`/addgame` - Add game\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check deleted games',
+                    value: '`/addgame` - Add game (with genre)\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check deleted games',
                     inline: false
                 },
                 {
@@ -691,6 +703,11 @@ client.on('interactionCreate', async interaction => {
                     name: '🔒 Admin',
                     value: '`/setadmin` - Manage bot admins\n`/setroles` - Manage permissions\n`/setchannel` - Set bot channel',
                     inline: false
+                },
+                {
+                    name: '🎯 Genres',
+                    value: '⚔️ Official | 🗡️ SwordFight | 🔫 Crim | 👋 Slap | 🐐 Goat',
+                    inline: false
                 }
             )
             .setFooter({ text: 'Retreat Gateway' })
@@ -701,14 +718,21 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'stats') {
         const userStats = {};
+        const genreStats = {};
+        
         games.forEach(game => {
             userStats[game.addedBy] = (userStats[game.addedBy] || 0) + 1;
+            genreStats[game.genre] = (genreStats[game.genre] || 0) + 1;
         });
         
         const topContributors = Object.entries(userStats)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 3)
             .map((entry, index) => `${index + 1}. **${entry[0]}** - ${entry[1]} game${entry[1] > 1 ? 's' : ''}`)
+            .join('\n');
+
+        const genreList = Object.entries(genreStats)
+            .map(([genre, count]) => `${GENRE_ICONS[genre] || '🎮'} **${genre}**: ${count}`)
             .join('\n');
 
         const embed = new EmbedBuilder()
@@ -723,6 +747,11 @@ client.on('interactionCreate', async interaction => {
                 {
                     name: '👑 Top Contributors',
                     value: topContributors || 'No games yet',
+                    inline: false
+                },
+                {
+                    name: '🎯 Games by Genre',
+                    value: genreList || 'No games yet',
                     inline: false
                 }
             )
@@ -802,8 +831,13 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // 🎮 ADDGAME - YENİ GENRE SİSTEMİ
+    // ═══════════════════════════════════════════════════════════
+
     if (commandName === 'addgame') {
         const gameIdInput = interaction.options.getString('gameid');
+        const genre = interaction.options.getString('genre');
         const gameId = extractGameId(gameIdInput);
 
         if (!gameId) {
@@ -838,6 +872,7 @@ client.on('interactionCreate', async interaction => {
             id: gameInfo.id,
             name: gameInfo.name,
             creator: gameInfo.creator,
+            genre: genre, // 🎯 GENRE EKLENDİ
             addedBy: interaction.user.tag,
             addedByUserId: interaction.user.id,
             addedAt: Date.now(),
@@ -847,12 +882,15 @@ client.on('interactionCreate', async interaction => {
 
         saveGames();
 
+        const genreIcon = GENRE_ICONS[genre] || '🎮';
+
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
             .setTitle('✅ Game Added Successfully!')
             .addFields(
                 { name: '🎮 Name', value: gameInfo.name, inline: true },
                 { name: '🆔 ID', value: gameId, inline: true },
+                { name: `${genreIcon} Genre`, value: genre, inline: true },
                 { name: '👤 Creator', value: gameInfo.creator, inline: true },
                 { name: '👥 Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
             )
@@ -905,7 +943,8 @@ client.on('interactionCreate', async interaction => {
             .setTitle('🗑️ Game Removed')
             .addFields(
                 { name: 'Name', value: game.customName || game.name, inline: true },
-                { name: 'ID', value: game.id, inline: true }
+                { name: 'ID', value: game.id, inline: true },
+                { name: 'Genre', value: `${GENRE_ICONS[game.genre] || '🎮'} ${game.genre}`, inline: true }
             )
             .setTimestamp();
 
@@ -917,29 +956,38 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply('🔭 No games yet!');
         }
 
+        // Genre'ye göre gruplandır
+        const gamesByGenre = {};
+        games.forEach(game => {
+            if (!gamesByGenre[game.genre]) {
+                gamesByGenre[game.genre] = [];
+            }
+            gamesByGenre[game.genre].push(game);
+        });
+
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
             .setTitle('🎮 Games in Hub')
             .setDescription(`Total: ${games.length}`)
             .setTimestamp();
 
-        for (const [index, game] of games.entries()) {
-            const uptime = Date.now() - game.addedAt;
-            const uptimeText = formatUptime(uptime);
-            const stats = await getGameStats(game.id);
+        for (const [genre, genreGames] of Object.entries(gamesByGenre)) {
+            const genreIcon = GENRE_ICONS[genre] || '🎮';
             
-            const displayName = game.customName || game.name;
-            const hasCustomization = game.customName || game.customDescription ? ' ✨' : '';
-            
-            let fieldValue = `**ID:** ${game.id}\n**Added by:** ${game.addedBy}\n**⏱️ Uptime:** ${uptimeText}\n**👥 Players:** ${stats.playing}/${stats.maxPlayers}`;
-            
-            if (game.customDescription) {
-                fieldValue += `\n**📄 Description:** ${game.customDescription}`;
-            }
-            
+            const gamesList = await Promise.all(
+                genreGames.map(async (game) => {
+                    const uptime = Date.now() - game.addedAt;
+                    const uptimeText = formatUptime(uptime);
+                    const stats = await getGameStats(game.id);
+                    const displayName = game.customName || game.name;
+                    
+                    return `**${displayName}** (ID: ${game.id})\n⏱️ ${uptimeText} | 👥 ${stats.playing}/${stats.maxPlayers}`;
+                })
+            );
+
             embed.addFields({
-                name: `${index + 1}. ${displayName}${hasCustomization}`,
-                value: fieldValue,
+                name: `${genreIcon} ${genre} (${genreGames.length})`,
+                value: gamesList.join('\n\n'),
                 inline: false
             });
         }
@@ -963,6 +1011,10 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════
+// 🌐 API ENDPOINTS - GENRE DESTEĞİYLE
+// ═══════════════════════════════════════════════════════════
+
 app.get('/api/test', (req, res) => {
     console.log('🧪 Test endpoint hit!');
     res.json({ 
@@ -984,6 +1036,7 @@ app.get('/api/games', async (req, res) => {
                 name: g.customName || g.name,
                 originalName: g.name,
                 creator: g.creator,
+                genre: g.genre, // 🎯 GENRE EKLENDİ
                 description: g.customDescription || null,
                 uptime: Date.now() - g.addedAt,
                 uptimeFormatted: formatUptime(Date.now() - g.addedAt),
