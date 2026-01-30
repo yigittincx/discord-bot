@@ -184,68 +184,132 @@ function formatUptime(ms) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧹 OTOMATIK TEMİZLEME SİSTEMİ - 5 DAKİKADA BİR (773 HATASI)
+// 🚨 MANUAL 773 ERROR VERIFICATION SYSTEM
 // ═══════════════════════════════════════════════════════════
+// Players click "Report" button → LocalScript tests teleport
+// If 773 error occurs → Bot verifies and auto-deletes game
 
-async function checkGameExists(gameId) {
+async function verify773Error(gameId) {
     try {
-        console.log(`🔍 Checking game ${gameId}...`);
+        console.log(`🔍 Verifying game ${gameId} for 773 error...`);
         
-        // 1. Önce universe ID'yi al
+        // Check if game exists via API
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         
         console.log(`📡 Universe API Response: ${universeResponse.status}`);
         
-        // 400 veya 404 = Oyun bulunamadı (773 teleport hatası vericek demektir)
+        // 400 or 404 = Game not found (would give 773 on teleport)
         if (universeResponse.status === 400 || universeResponse.status === 404) {
-            console.log(`❌ Game ${gameId} NOT FOUND - Would give 773 on teleport`);
-            return false;
+            console.log(`❌ VERIFIED: Game ${gameId} NOT FOUND - 773 error confirmed`);
+            return true; // Confirmed 773 error
         }
         
-        // Diğer hatalar = geçici sorun, oyunu koru
         if (!universeResponse.ok) {
-            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - KEEPING (temporary issue)`);
-            return true;
+            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - Cannot verify`);
+            return false; // Cannot verify
         }
         
         const universeData = await universeResponse.json();
         
-        // Universe ID yoksa = Oyun silinmiş veya private (773 verir)
         if (!universeData.universeId) {
-            console.log(`❌ Game ${gameId} - No universeId - Would give 773 on teleport`);
-            return false;
+            console.log(`❌ VERIFIED: Game ${gameId} - No universeId - 773 error confirmed`);
+            return true; // Confirmed 773 error
         }
         
-        // 2. Oyun bilgilerini al
         const universeId = universeData.universeId;
         const gameResponse = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         
         console.log(`📡 Games API Response: ${gameResponse.status}`);
         
         if (!gameResponse.ok) {
-            console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - KEEPING (temporary issue)`);
-            return true;
+            console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - Cannot verify`);
+            return false;
         }
         
         const data = await gameResponse.json();
         
-        // Data boşsa = Oyun yok (773 verir)
         if (!data.data || data.data.length === 0) {
-            console.log(`❌ Game ${gameId} - No game data - Would give 773 on teleport`);
-            return false;
+            console.log(`❌ VERIFIED: Game ${gameId} - No game data - 773 error confirmed`);
+            return true; // Confirmed 773 error
         }
         
-        // Oyun var ve erişilebilir
-        console.log(`✅ Game ${gameId} EXISTS and accessible`);
-        return true;
+        console.log(`✅ Game ${gameId} EXISTS - Report is FALSE POSITIVE`);
+        return false; // Game exists, no 773 error
         
     } catch (error) {
-        console.error(`❌ Error checking game ${gameId}:`, error.message);
-        
-        // Network hatası = Güvenli tarafta dur, oyunu koru
-        console.log(`⚠️ Network error for ${gameId} - KEEPING game as safe`);
-        return true;
+        console.error(`❌ Error verifying game ${gameId}:`, error.message);
+        return false; // Cannot verify, don't delete
     }
+}
+
+async function handle773Report(playerName, playerUserId, gameId, errorCode) {
+    console.log('\n════════════════════════════════════════');
+    console.log('🚨 773 ERROR REPORT RECEIVED');
+    console.log(`👤 Player: ${playerName} (${playerUserId})`);
+    console.log(`🎮 Game ID: ${gameId}`);
+    console.log(`❌ Error Code: ${errorCode}`);
+    console.log('════════════════════════════════════════\n');
+    
+    const game = games.find(g => g.id === gameId);
+    
+    if (!game) {
+        console.log('⚠️ Game not found in database - ignoring report');
+        return { success: false, reason: 'Game not in database' };
+    }
+    
+    console.log(`📋 Found game: ${game.name}`);
+    console.log(`🔍 Verifying 773 error...`);
+    
+    const is773Confirmed = await verify773Error(gameId);
+    
+    if (!is773Confirmed) {
+        console.log('❌ 773 error NOT confirmed - keeping game');
+        console.log('   This might be a group-only game or temporary issue\n');
+        return { 
+            success: false, 
+            reason: 'Game exists - might be group-only or temporary error' 
+        };
+    }
+    
+    console.log('✅ 773 error CONFIRMED - deleting game');
+    
+    // Remove game
+    games = games.filter(g => g.id !== gameId);
+    saveGames();
+    
+    console.log(`🗑️ Game removed from database`);
+    
+    // Send notification to game owner
+    try {
+        const user = await client.users.fetch(game.addedByUserId);
+        
+        const embed = new EmbedBuilder()
+            .setColor(0xFF6B6B)
+            .setTitle('🗑️ Game Auto-Removed (773 Error Verified)')
+            .setDescription(`A player reported a 773 teleport error and it was verified.`)
+            .addFields(
+                { name: '🎮 Game', value: game.customName || game.name, inline: true },
+                { name: '🆔 ID', value: game.id, inline: true },
+                { name: '📂 Genre', value: `${GENRE_ICONS[game.genre] || '🎮'} ${game.genre}`, inline: true },
+                { name: '👤 Reported By', value: playerName, inline: true },
+                { name: '❌ Error', value: `Code ${errorCode} - Game not accessible`, inline: false }
+            )
+            .setFooter({ text: 'Verified 773 error detection system' })
+            .setTimestamp();
+        
+        await user.send({ embeds: [embed] });
+        console.log(`✅ Notification sent to ${game.addedBy}`);
+    } catch (error) {
+        console.error(`❌ Could not send DM to ${game.addedBy}:`, error.message);
+    }
+    
+    console.log('\n✅ 773 REPORT PROCESSED SUCCESSFULLY\n');
+    
+    return { 
+        success: true, 
+        gameName: game.name,
+        verified: true 
+    };
 }
 
 async function autoCleanupDeletedGames() {
@@ -327,22 +391,10 @@ client.once('ready', () => {
     loadGames();
     loadConfig();
     
-    console.log('\n⏰ Auto-cleanup schedule (Prevent 773 Teleport Errors):');
-    console.log('   📍 First run: in 30 seconds');
-    console.log('   🔁 Repeat: every 5 minutes');
-    console.log('   🎯 Purpose: Remove games that would fail teleport\n');
-    
-    // İlk kontrol 30 saniye sonra
-    setTimeout(() => {
-        console.log('🚀 Running first auto-cleanup...\n');
-        autoCleanupDeletedGames();
-    }, 30000);
-    
-    // Her 5 dakikada bir
-    setInterval(() => {
-        console.log('🚀 Running scheduled auto-cleanup...\n');
-        autoCleanupDeletedGames();
-    }, 5 * 60 * 1000); // 5 dakika
+    console.log('\n🚨 Manual 773 Error Verification System Active');
+    console.log('   📍 Players can report broken games using "Report" button');
+    console.log('   🔍 Bot verifies each report before auto-deletion');
+    console.log('   ✅ Group-only games are protected from false reports\n');
 });
 
 client.on('interactionCreate', async interaction => {
@@ -1129,6 +1181,27 @@ app.get('/api/health', (req, res) => {
         gameCount: games.length,
         botStatus: client.user ? 'connected' : 'disconnected'
     });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🚨 773 ERROR REPORT ENDPOINT
+// ═══════════════════════════════════════════════════════════
+app.post('/api/report773', async (req, res) => {
+    console.log('📥 773 Error report received!');
+    console.log('Request body:', req.body);
+    
+    const { playerName, playerUserId, gameId, errorCode } = req.body;
+    
+    if (!playerName || !gameId || !errorCode) {
+        return res.status(400).json({
+            success: false,
+            error: 'Missing required fields: playerName, gameId, errorCode'
+        });
+    }
+    
+    const result = await handle773Report(playerName, playerUserId, gameId, errorCode);
+    
+    res.json(result);
 });
 
 app.get('/', (req, res) => {
