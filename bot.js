@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
+const noblox = require('noblox.js');
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds] 
@@ -23,6 +24,7 @@ app.use((req, res, next) => {
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const PORT = process.env.PORT || 3000;
+const ROBLOX_COOKIE = process.env.ROBLOSECURITY; // Bot'un Roblox hesabı cookie'si
 
 let config = {
     allowedRoles: [],
@@ -184,156 +186,163 @@ function formatUptime(ms) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🚨 MANUAL 773 ERROR VERIFICATION SYSTEM
+// 🤖 ROBLOX ACCOUNT GAME VERIFICATION
 // ═══════════════════════════════════════════════════════════
-// Players click "Report" button → LocalScript tests teleport
-// If 773 error occurs → Bot verifies and auto-deletes game
+// Bot uses its Roblox account to check if game is accessible
+// If bot can access → game is fine (public or bot has group access)
+// If bot cannot access → game is deleted/banned → remove it
 
-async function verify773Error(gameId) {
+async function canBotAccessGame(gameId) {
     try {
-        console.log(`════════════════════════════════════════`);
-        console.log(`🔍 VERIFYING GAME ${gameId} FOR 773 ERROR`);
-        console.log(`════════════════════════════════════════`);
+        console.log(`🔍 Testing if bot can access game ${gameId}...`);
         
-        // Check if game exists via API
-        const universeURL = `https://apis.roblox.com/universes/v1/places/${gameId}/universe`;
-        console.log(`📡 Fetching: ${universeURL}`);
-        
-        const universeResponse = await fetch(universeURL);
-        
-        console.log(`📊 Universe API Response Status: ${universeResponse.status}`);
-        
-        // 400 or 404 = Game not found (would give 773 on teleport)
-        if (universeResponse.status === 400 || universeResponse.status === 404) {
-            console.log(`❌ CONFIRMED 773: Game ${gameId} NOT FOUND (Status ${universeResponse.status})`);
-            console.log(`   This game will cause 773 teleport error`);
-            console.log(`════════════════════════════════════════\n`);
-            return true; // Confirmed 773 error
+        if (!ROBLOX_COOKIE) {
+            console.log(`⚠️ No Roblox cookie - using API fallback`);
+            return await canAccessGameViaAPI(gameId);
         }
         
-        if (!universeResponse.ok) {
-            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - Cannot verify (temporary issue?)`);
-            console.log(`════════════════════════════════════════\n`);
-            return false; // Cannot verify
+        try {
+            // Try to get game info - this will fail if game doesn't exist
+            const gameInfo = await noblox.getPlaceInfo(parseInt(gameId));
+            
+            if (!gameInfo || !gameInfo.name) {
+                console.log(`❌ Game ${gameId} does not exist`);
+                return false;
+            }
+            
+            console.log(`✅ Bot can access game: ${gameInfo.name}`);
+            return true;
+            
+        } catch (error) {
+            // Check if it's a "game doesn't exist" error
+            if (error.message.includes('does not exist') || 
+                error.message.includes('not found') ||
+                error.message.includes('invalid place')) {
+                console.log(`❌ Game ${gameId} is deleted/banned`);
+                return false;
+            }
+            
+            // Unknown error - be safe and keep game
+            console.log(`⚠️ Unknown error for ${gameId}: ${error.message} - keeping game`);
+            return true;
         }
-        
-        const universeData = await universeResponse.json();
-        console.log(`📦 Universe Data:`, JSON.stringify(universeData, null, 2));
-        
-        if (!universeData.universeId) {
-            console.log(`❌ CONFIRMED 773: Game ${gameId} - No universeId found`);
-            console.log(`   This game will cause 773 teleport error`);
-            console.log(`════════════════════════════════════════\n`);
-            return true; // Confirmed 773 error
-        }
-        
-        const universeId = universeData.universeId;
-        console.log(`✅ Found Universe ID: ${universeId}`);
-        
-        const gameURL = `https://games.roblox.com/v1/games?universeIds=${universeId}`;
-        console.log(`📡 Fetching: ${gameURL}`);
-        
-        const gameResponse = await fetch(gameURL);
-        console.log(`📊 Games API Response Status: ${gameResponse.status}`);
-        
-        if (!gameResponse.ok) {
-            console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - Cannot verify`);
-            console.log(`════════════════════════════════════════\n`);
-            return false;
-        }
-        
-        const data = await gameResponse.json();
-        console.log(`📦 Game Data:`, JSON.stringify(data, null, 2));
-        
-        if (!data.data || data.data.length === 0) {
-            console.log(`❌ CONFIRMED 773: Game ${gameId} - No game data returned`);
-            console.log(`   This game will cause 773 teleport error`);
-            console.log(`════════════════════════════════════════\n`);
-            return true; // Confirmed 773 error
-        }
-        
-        console.log(`✅ FALSE POSITIVE: Game ${gameId} EXISTS and is accessible via API`);
-        console.log(`   Game Name: ${data.data[0].name}`);
-        console.log(`   This is likely a group-only game or has other restrictions`);
-        console.log(`   Players can access it if they meet requirements`);
-        console.log(`════════════════════════════════════════\n`);
-        return false; // Game exists, no 773 error
         
     } catch (error) {
-        console.error(`❌ ERROR while verifying game ${gameId}:`, error.message);
-        console.log(`   Network error - keeping game as safe choice`);
-        console.log(`════════════════════════════════════════\n`);
-        return false; // Cannot verify, don't delete
+        console.error(`❌ Error checking game ${gameId}:`, error.message);
+        return true; // Be safe, don't delete on errors
     }
 }
 
-async function handle773Report(playerName, playerUserId, gameId, errorCode) {
+async function canAccessGameViaAPI(gameId) {
+    try {
+        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        
+        if (universeResponse.status === 400 || universeResponse.status === 404) {
+            return false; // Game doesn't exist
+        }
+        
+        if (!universeResponse.ok) {
+            return true; // Temporary error, keep game
+        }
+        
+        const universeData = await universeResponse.json();
+        
+        if (!universeData.universeId) {
+            return false; // No universe = deleted game
+        }
+        
+        return true; // Game exists
+        
+    } catch (error) {
+        return true; // Error = keep game to be safe
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ⏰ AUTOMATIC GAME VERIFICATION - EVERY 10 MINUTES
+// ═══════════════════════════════════════════════════════════
+async function autoCheckGames() {
     console.log('\n════════════════════════════════════════');
-    console.log('🚨 773 ERROR REPORT RECEIVED');
-    console.log(`👤 Player: ${playerName} (${playerUserId})`);
-    console.log(`🎮 Game ID: ${gameId}`);
-    console.log(`❌ Error Code: ${errorCode}`);
+    console.log('🤖 AUTO-CHECK STARTED (Bot Roblox Account)');
+    console.log(`🕐 Time: ${new Date().toLocaleString()}`);
+    console.log(`📊 Total games to check: ${games.length}`);
     console.log('════════════════════════════════════════\n');
     
-    const game = games.find(g => g.id === gameId);
-    
-    if (!game) {
-        console.log('⚠️ Game not found in database - ignoring report');
-        return { success: false, reason: 'Game not in database' };
+    if (games.length === 0) {
+        console.log('✅ No games to check!\n');
+        return;
     }
     
-    console.log(`📋 Found game: ${game.name}`);
-    console.log(`🔍 Verifying 773 error...`);
+    const deletedGames = [];
     
-    const is773Confirmed = await verify773Error(gameId);
-    
-    if (!is773Confirmed) {
-        console.log('❌ 773 error NOT confirmed - keeping game');
-        console.log('   This might be a group-only game or temporary issue\n');
-        return { 
-            success: false, 
-            reason: 'Game exists - might be group-only or temporary error' 
-        };
-    }
-    
-    console.log('✅ 773 error CONFIRMED - deleting game');
-    
-    // Remove game
-    games = games.filter(g => g.id !== gameId);
-    saveGames();
-    
-    console.log(`🗑️ Game removed from database`);
-    
-    // Send notification to game owner
-    try {
-        const user = await client.users.fetch(game.addedByUserId);
+    for (let i = 0; i < games.length; i++) {
+        const game = games[i];
+        console.log(`\n[${i + 1}/${games.length}] Checking: ${game.name} (${game.id})`);
         
-        const embed = new EmbedBuilder()
-            .setColor(0xFF6B6B)
-            .setTitle('🗑️ Game Auto-Removed (773 Error Verified)')
-            .setDescription(`A player reported a 773 teleport error and it was verified.`)
-            .addFields(
-                { name: '🎮 Game', value: game.customName || game.name, inline: true },
-                { name: '🆔 ID', value: game.id, inline: true },
-                { name: '📂 Genre', value: `${GENRE_ICONS[game.genre] || '🎮'} ${game.genre}`, inline: true },
-                { name: '👤 Reported By', value: playerName, inline: true },
-                { name: '❌ Error', value: `Code ${errorCode} - Game not accessible`, inline: false }
-            )
-            .setFooter({ text: 'Verified 773 error detection system' })
-            .setTimestamp();
+        const canAccess = await canBotAccessGame(game.id);
         
-        await user.send({ embeds: [embed] });
-        console.log(`✅ Notification sent to ${game.addedBy}`);
-    } catch (error) {
-        console.error(`❌ Could not send DM to ${game.addedBy}:`, error.message);
+        if (!canAccess) {
+            console.log(`🗑️ MARKED FOR DELETION: ${game.name}`);
+            deletedGames.push(game);
+        } else {
+            console.log(`✅ KEEPING: ${game.name}`);
+        }
+        
+        // Rate limiting - wait 1 second between checks
+        await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    console.log('\n✅ 773 REPORT PROCESSED SUCCESSFULLY\n');
+    console.log('\n════════════════════════════════════════');
+    console.log('📈 AUTO-CHECK SUMMARY:');
+    console.log(`✅ Kept: ${games.length - deletedGames.length}`);
+    console.log(`❌ Deleted: ${deletedGames.length}`);
+    console.log('════════════════════════════════════════\n');
     
-    return { 
-        success: true, 
-        gameName: game.name,
-        verified: true 
+    if (deletedGames.length > 0) {
+        // Remove deleted games
+        games = games.filter(g => !deletedGames.find(d => d.id === g.id));
+        saveGames();
+        
+        console.log(`✅ Removed ${deletedGames.length} game(s) from database`);
+        
+        // Send notifications to game owners
+        for (const game of deletedGames) {
+            try {
+                console.log(`📧 Sending notification to ${game.addedBy}...`);
+                const user = await client.users.fetch(game.addedByUserId);
+                
+                const embed = new EmbedBuilder()
+                    .setColor(0xFF6B6B)
+                    .setTitle('🗑️ Game Auto-Removed (Inaccessible)')
+                    .setDescription(`Your game was automatically removed because the bot cannot access it.`)
+                    .addFields(
+                        { name: '🎮 Game', value: game.customName || game.name, inline: true },
+                        { name: '🆔 ID', value: game.id, inline: true },
+                        { name: '📂 Genre', value: `${GENRE_ICONS[game.genre] || '🎮'} ${game.genre}`, inline: true },
+                        { name: '❌ Reason', value: 'Game is deleted, banned, or bot account lacks access', inline: false },
+                        { name: '💡 Note', value: 'If this is a private game, make sure the bot account is in your group with proper permissions.', inline: false }
+                    )
+                    .setFooter({ text: 'Auto-check system runs every 10 minutes' })
+                    .setTimestamp();
+                
+                await user.send({ embeds: [embed] });
+                console.log(`✅ Notification sent to ${game.addedBy}`);
+            } catch (error) {
+                console.error(`❌ Could not send DM to ${game.addedBy}:`, error.message);
+            }
+        }
+    }
+    
+    console.log('\n🤖 AUTO-CHECK FINISHED\n');
+}
+
+async function handle773Report(playerName, playerUserId, gameId, errorCode) {
+    // This function is deprecated - auto-check system handles everything now
+    console.log(`⚠️ Manual report received from ${playerName} for game ${gameId}`);
+    console.log(`   Auto-check system will verify this game automatically`);
+    return {
+        success: false,
+        reason: 'Manual reports disabled - auto-check system runs every 10 minutes'
     };
 }
 
@@ -416,10 +425,41 @@ client.once('ready', () => {
     loadGames();
     loadConfig();
     
-    console.log('\n🚨 Manual 773 Error Verification System Active');
-    console.log('   📍 Players can report broken games using "Report" button');
-    console.log('   🔍 Bot verifies each report before auto-deletion');
-    console.log('   ✅ Group-only games are protected from false reports\n');
+    // Login to Roblox account if cookie is provided
+    if (ROBLOX_COOKIE) {
+        console.log('\n🤖 Logging into Roblox account...');
+        noblox.setCookie(ROBLOX_COOKIE)
+            .then(currentUser => {
+                console.log(`✅ Logged in as: ${currentUser.UserName} (${currentUser.UserID})`);
+                console.log(`   This account will be used to verify game accessibility`);
+                console.log(`   Make sure this account is in your group with test permissions!\n`);
+            })
+            .catch(err => {
+                console.error('❌ Failed to login to Roblox:', err.message);
+                console.log('⚠️ Bot will use API-only verification (less accurate)\n');
+            });
+    } else {
+        console.log('\n⚠️ No ROBLOSECURITY cookie provided');
+        console.log('   Bot will use API-only verification');
+        console.log('   Set ROBLOSECURITY environment variable for better accuracy\n');
+    }
+    
+    console.log('⏰ Auto-check schedule:');
+    console.log('   📍 First check: in 30 seconds');
+    console.log('   🔁 Repeat: every 10 minutes');
+    console.log('   🎯 Purpose: Remove inaccessible games automatically\n');
+    
+    // First check after 30 seconds
+    setTimeout(() => {
+        console.log('🚀 Running first auto-check...\n');
+        autoCheckGames();
+    }, 30000);
+    
+    // Then every 10 minutes
+    setInterval(() => {
+        console.log('🚀 Running scheduled auto-check...\n');
+        autoCheckGames();
+    }, 10 * 60 * 1000); // 10 minutes
 });
 
 client.on('interactionCreate', async interaction => {
@@ -905,6 +945,13 @@ client.on('interactionCreate', async interaction => {
                     name: '🎯 Games by Genre',
                     value: genreList || 'No games yet',
                     inline: false
+                }
+            )
+            .setTimestamp();
+
+        return interaction.reply({ embeds: [embed] });
+    }
+    
                 }
             )
             .setTimestamp();
