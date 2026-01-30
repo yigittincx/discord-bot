@@ -1,15 +1,26 @@
 {
-  "name": "discord-bot",
   "name": "retreat-gateway-bot",
-"version": "1.0.0",
-"main": "bot.js",
-"scripts": {
-    "start": "node bot.js"
-    "start": "node bot.js",
-    "deploy": "node deploy-commands.js"
-},
-"dependencies": {
-"discord.js": "^14.14.1",
-"express": "^4.18.2"
-}
+  "version": "1.0.0",
+  "description": "Discord bot for Roblox game hub with genre system and auto-cleanup",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node deploy-commands.js && node bot.js",
+    "deploy": "node deploy-commands.js",
+    "bot": "node bot.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "roblox",
+    "game-hub"
+  ],
+  "author": "Retreat Productions",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
 }
