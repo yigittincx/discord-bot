@@ -13,11 +13,11 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
+    
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
-
+    
     next();
 });
 
@@ -95,7 +95,7 @@ function extractGameId(url) {
         /roblox\.com\/games\/(\d+)/,
         /^(\d+)$/
     ];
-
+    
     for (const pattern of patterns) {
         const match = url.match(pattern);
         if (match) return match[1];
@@ -106,27 +106,27 @@ function extractGameId(url) {
 async function getGameInfo(gameId) {
     try {
         console.log(`🔍 Fetching game info for ID: ${gameId}`);
-
+        
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         const universeData = await universeResponse.json();
-
+        
         console.log('Universe data:', universeData);
-
+        
         if (!universeData.universeId) {
             console.log('❌ No universe ID found');
             return null;
         }
-
+        
         const universeId = universeData.universeId;
         const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         const data = await response.json();
-
+        
         console.log('Game data:', data);
-
+        
         if (data.data && data.data.length > 0) {
             const gameData = data.data[0];
             console.log(`✅ Found game: ${gameData.name}, Playing: ${gameData.playing}, Max: ${gameData.maxPlayers}`);
-
+            
             return {
                 id: gameId,
                 name: gameData.name,
@@ -144,19 +144,19 @@ async function getGameInfo(gameId) {
 async function getGameStats(gameId) {
     try {
         console.log(`📊 Fetching stats for game ID: ${gameId}`);
-
+        
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         const universeData = await universeResponse.json();
-
+        
         if (!universeData.universeId) {
             console.log('❌ No universe ID for stats');
             return { playing: 0, maxPlayers: 0 };
         }
-
+        
         const universeId = universeData.universeId;
         const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         const data = await response.json();
-
+        
         if (data.data && data.data.length > 0) {
             const stats = {
                 playing: data.data[0].playing || 0,
@@ -176,7 +176,7 @@ function formatUptime(ms) {
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
-
+    
     if (days > 0) return `${days}d ${hours % 24}h`;
     if (hours > 0) return `${hours}h ${minutes % 60}m`;
     if (minutes > 0) return `${minutes}m`;
@@ -189,57 +189,65 @@ function formatUptime(ms) {
 
 async function checkGameExists(gameId) {
     try {
-console.log(`🔍 Checking game ${gameId}...`);
-
+        console.log(`🔍 Checking game ${gameId}...`);
+        
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
- console.log(`📡 Universe API Response: ${universeResponse.status}`);
+        
+        console.log(`📡 Universe API Response: ${universeResponse.status}`);
         
         // SADECE 404 = deleted
         if (universeResponse.status === 404) {
-console.log(`❌ Game ${gameId} is DELETED (404)`);
+            console.log(`❌ Game ${gameId} is DELETED (404)`);
             return false;
         }
-// Diğer hatalar = oyunu koru
+        
+        // Diğer hatalar = oyunu koru
         if (!universeResponse.ok) {
-console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - KEEPING`);
+            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - KEEPING`);
             return true;
         }
-
+        
         const universeData = await universeResponse.json();
-if (!universeData.universeId) {
-console.log(`⚠️ Game ${gameId} - No universeId - KEEPING (might be private)`);
+        
+        if (!universeData.universeId) {
+            console.log(`⚠️ Game ${gameId} - No universeId - KEEPING (might be private)`);
             return true;
         }
-const universeId = universeData.universeId;
-const gameResponse = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
-console.log(`📡 Games API Response: ${gameResponse.status}`);
+        
+        const universeId = universeData.universeId;
+        const gameResponse = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        
+        console.log(`📡 Games API Response: ${gameResponse.status}`);
         
         if (gameResponse.status === 404) {
             console.log(`❌ Game ${gameId} data not found (404)`);
             return false;
         }
- if (!gameResponse.ok) {
+        
+        if (!gameResponse.ok) {
             console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - KEEPING`);
             return true;
         }
-const data = await gameResponse.json();
-
+        
+        const data = await gameResponse.json();
+        
         if (!data.data || data.data.length === 0) {
-console.log(`⚠️ Game ${gameId} - Empty data - KEEPING`);
+            console.log(`⚠️ Game ${gameId} - Empty data - KEEPING`);
             return true;
         }
-nsole.log(`✅ Game ${gameId} EXISTS`);
+        
+        console.log(`✅ Game ${gameId} EXISTS`);
         return true;
-
+        
     } catch (error) {
         console.error(`❌ Error checking game ${gameId}:`, error.message);
- console.log(`⚠️ Network error for ${gameId} - KEEPING game as safe`);
+        console.log(`⚠️ Network error for ${gameId} - KEEPING game as safe`);
         return true;
     }
 }
 
 async function autoCleanupDeletedGames() {
-console.log('\n════════════════════════════════════════');
+    console.log('\n════════════════════════════════════════');
     console.log('🧹 AUTO-CLEANUP STARTED');
     console.log(`🕐 Time: ${new Date().toLocaleString()}`);
     console.log(`📊 Total games: ${games.length}`);
@@ -249,38 +257,43 @@ console.log('\n═════════════════════�
         console.log('✅ No games to check!\n');
         return;
     }
-const deletedGames = [];
-for (let i = 0; i < games.length; i++) {
+    
+    const deletedGames = [];
+    
+    for (let i = 0; i < games.length; i++) {
         const game = games[i];
         console.log(`\n[${i + 1}/${games.length}] Checking: ${game.name} (${game.id})`);
         
         const exists = await checkGameExists(game.id);
-
+        
         if (!exists) {
- console.log(`🗑️ MARKED FOR DELETION: ${game.name}`);
+            console.log(`🗑️ MARKED FOR DELETION: ${game.name}`);
             deletedGames.push(game);
         } else {
-console.log(`✅ KEEPING: ${game.name}`);
+            console.log(`✅ KEEPING: ${game.name}`);
         }
-// Rate limiting
+        
+        // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
-console.log('\n════════════════════════════════════════');
+    
+    console.log('\n════════════════════════════════════════');
     console.log('📈 CLEANUP SUMMARY:');
     console.log(`✅ Kept: ${games.length - deletedGames.length}`);
     console.log(`❌ Deleted: ${deletedGames.length}`);
     console.log('════════════════════════════════════════\n');
-
+    
     if (deletedGames.length > 0) {
         games = games.filter(g => !deletedGames.find(d => d.id === g.id));
         saveGames();
-console.log(`✅ Removed ${deletedGames.length} game(s) from database`);
-
+        
+        console.log(`✅ Removed ${deletedGames.length} game(s) from database`);
+        
         for (const game of deletedGames) {
             try {
                 console.log(`📧 Sending notification to ${game.addedBy}...`);
                 const user = await client.users.fetch(game.addedByUserId);
-
+                
                 const embed = new EmbedBuilder()
                     .setColor(0xFF6B6B)
                     .setTitle('🗑️ Game Automatically Removed')
@@ -290,17 +303,17 @@ console.log(`✅ Removed ${deletedGames.length} game(s) from database`);
                         { name: '🆔 Game ID', value: game.id, inline: true },
                         { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
                     )
- .setFooter({ text: 'Retreat Gateway - Auto Cleanup' })
+                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup' })
                     .setTimestamp();
-
+                
                 await user.send({ embeds: [embed] });
-console.log(`✅ Notified ${game.addedBy}`);
+                console.log(`✅ Notified ${game.addedBy}`);
             } catch (error) {
- console.error(`❌ Failed to notify ${game.addedBy}:`, error.message);
+                console.error(`❌ Failed to notify ${game.addedBy}:`, error.message);
             }
         }
     } else {
-console.log('✅ No deleted games found. All games are valid!');
+        console.log('✅ No deleted games found. All games are valid!');
     }
     
     console.log('\n🧹 AUTO-CLEANUP FINISHED\n');
@@ -310,7 +323,8 @@ client.once('ready', () => {
     console.log(`✅ Bot is online as ${client.user.tag}`);
     loadGames();
     loadConfig();
-console.log('\n⏰ Auto-cleanup schedule:');
+    
+    console.log('\n⏰ Auto-cleanup schedule:');
     console.log('   📍 First run: in 30 seconds');
     console.log('   🔁 Repeat: every 15 minutes\n');
     
@@ -324,33 +338,34 @@ console.log('\n⏰ Auto-cleanup schedule:');
     setInterval(() => {
         console.log('🚀 Running scheduled auto-cleanup...\n');
         autoCleanupDeletedGames();
-}, 15 * 60 * 1000); // 15 dakika
+    }, 15 * 60 * 1000); // 15 dakika
 });
+
 client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('customize_')) {
             const gameId = interaction.customId.split('_')[1];
-
+            
             const game = games.find(g => g.id === gameId);
-
+            
             if (!game) {
                 return interaction.reply({
                     content: '❌ Game not found!',
                     ephemeral: true
                 });
             }
-
+            
             if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
                     content: '❌ You can only customize your own games!',
                     ephemeral: true
                 });
             }
-
+            
             const modal = new ModalBuilder()
                 .setCustomId(`customizeModal_${gameId}`)
                 .setTitle('✨ Customize Your Game');
-
+            
             const nameInput = new TextInputBuilder()
                 .setCustomId('customName')
                 .setLabel('Custom Name (Optional)')
@@ -359,7 +374,7 @@ client.on('interactionCreate', async interaction => {
                 .setMaxLength(50)
                 .setRequired(false)
                 .setValue(game.customName || '');
-
+            
             const descInput = new TextInputBuilder()
                 .setCustomId('customDescription')
                 .setLabel('Custom Description (Optional)')
@@ -368,44 +383,44 @@ client.on('interactionCreate', async interaction => {
                 .setMaxLength(200)
                 .setRequired(false)
                 .setValue(game.customDescription || '');
-
+            
             const nameRow = new ActionRowBuilder().addComponents(nameInput);
             const descRow = new ActionRowBuilder().addComponents(descInput);
-
+            
             modal.addComponents(nameRow, descRow);
-
+            
             await interaction.showModal(modal);
         }
-
+        
         if (interaction.customId.startsWith('sendlink_')) {
             const gameId = interaction.customId.split('_')[1];
-
+            
             const game = games.find(g => g.id === gameId);
-
+            
             if (!game) {
                 return interaction.reply({
                     content: '❌ Game not found!',
                     ephemeral: true
                 });
             }
-
+            
             if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
                     content: '❌ You can only send links for your own games!',
                     ephemeral: true
                 });
             }
-
+            
             await interaction.deferReply({ ephemeral: true });
-
+            
             try {
                 const leader = await client.users.fetch(config.leaderUserId);
                 const gameLink = `https://www.roblox.com/games/${gameId}`;
-
+                
                 const stats = await getGameStats(gameId);
-
+                
                 const genreIcon = GENRE_ICONS[game.genre] || '🎮';
-
+                
                 const dmEmbed = new EmbedBuilder()
                     .setColor(0x00FF00)
                     .setTitle('🎮 New Game Link from Hub!')
@@ -419,13 +434,13 @@ client.on('interactionCreate', async interaction => {
                     )
                     .setFooter({ text: 'Retreat Gateway - Game Link Request' })
                     .setTimestamp();
-
+                
                 if (game.customDescription) {
                     dmEmbed.addFields({ name: '📄 Description', value: game.customDescription, inline: false });
                 }
-
+                
                 await leader.send({ embeds: [dmEmbed] });
-
+                
                 await interaction.editReply({
                     content: `✅ Game link sent to <@${config.leaderUserId}> successfully!`
                 });
@@ -437,34 +452,34 @@ client.on('interactionCreate', async interaction => {
             }
         }
     }
-
+    
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('customizeModal_')) {
             const gameId = interaction.customId.split('_')[1];
             const customName = interaction.fields.getTextInputValue('customName');
             const customDescription = interaction.fields.getTextInputValue('customDescription');
-
+            
             const game = games.find(g => g.id === gameId);
-
+            
             if (!game) {
                 return interaction.reply({
                     content: '❌ Game not found!',
                     ephemeral: true
                 });
             }
-
+            
             const oldName = game.customName || game.name;
             const oldDesc = game.customDescription || 'No description';
-
+            
             if (customName.trim()) {
                 game.customName = customName.trim();
             }
             if (customDescription.trim()) {
                 game.customDescription = customDescription.trim();
             }
-
+            
             saveGames();
-
+            
             const embed = new EmbedBuilder()
                 .setColor(0x00D9FF)
                 .setTitle('✨ Game Customized Successfully!')
@@ -475,28 +490,28 @@ client.on('interactionCreate', async interaction => {
                 )
                 .setFooter({ text: 'Changes are now live in your Roblox hub!' })
                 .setTimestamp();
-
+            
             if (customName.trim()) {
                 embed.addFields(
                     { name: '📝 Name Updated', value: `~~${oldName}~~ → **${game.customName}**`, inline: false }
                 );
             }
-
+            
             if (customDescription.trim()) {
                 embed.addFields(
                     { name: '📄 Description Updated', value: `~~${oldDesc}~~ → **${game.customDescription}**`, inline: false }
                 );
             }
-
+            
             if (!customName.trim() && !customDescription.trim()) {
                 embed.setDescription('⚠️ No changes made. Both fields were empty.');
                 embed.setColor(0xFFAA00);
             }
-
+            
             await interaction.reply({ embeds: [embed], ephemeral: true });
         }
     }
-
+    
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
@@ -519,7 +534,7 @@ client.on('interactionCreate', async interaction => {
             ephemeral: true
         });
     }
-
+    
     const adminCommands = ['setroles', 'setchannel', 'setadmin', 'checkgames'];
     if (adminCommands.includes(commandName) && !isBotAdmin(interaction.member)) {
         return interaction.reply({
@@ -663,26 +678,26 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'setadmin') {
         const action = interaction.options.getString('action');
-
+        
         if (action === 'add') {
             const user = interaction.options.getUser('user');
-
+            
             if (config.botAdmins.includes(user.id)) {
                 return interaction.reply({
                     content: `❌ ${user.tag} is already a bot admin!`,
                     ephemeral: true
                 });
             }
-
+            
             config.botAdmins.push(user.id);
             saveConfig();
-
+            
             return interaction.reply(`✅ Added ${user.tag} as bot admin!`);
         }
-
+        
         else if (action === 'remove') {
             const user = interaction.options.getUser('user');
-
+            
             const index = config.botAdmins.indexOf(user.id);
             if (index === -1) {
                 return interaction.reply({
@@ -690,39 +705,39 @@ client.on('interactionCreate', async interaction => {
                     ephemeral: true
                 });
             }
-
+            
             config.botAdmins.splice(index, 1);
             saveConfig();
-
+            
             return interaction.reply(`✅ Removed ${user.tag} from bot admins!`);
         }
-
+        
         else if (action === 'list') {
             if (config.botAdmins.length === 0) {
                 return interaction.reply('📋 No bot admins set! Only server owner has full access.');
             }
-
+            
             const adminsList = config.botAdmins
                 .map(userId => {
                     const user = interaction.guild.members.cache.get(userId);
                     return user ? `• ${user.user.tag}` : `• Unknown User`;
                 })
                 .join('\n');
-
+            
             const embed = new EmbedBuilder()
                 .setColor(0xFF5555)
                 .setTitle('👑 Bot Admins')
                 .setDescription(adminsList)
                 .setFooter({ text: 'Server owner always has full access' })
                 .setTimestamp();
-
+            
             return interaction.reply({ embeds: [embed] });
         }
     }
 
     if (commandName === 'setchannel') {
         const channel = interaction.options.getChannel('channel');
-
+        
         if (channel) {
             config.allowedChannel = channel.id;
             saveConfig();
@@ -760,7 +775,7 @@ client.on('interactionCreate', async interaction => {
                     inline: false
                 }
             )
-.setFooter({ text: 'Retreat Gateway - Auto-cleanup every 15 minutes' })
+            .setFooter({ text: 'Retreat Gateway - Auto-cleanup every 15 minutes' })
             .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
@@ -769,12 +784,12 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'stats') {
         const userStats = {};
         const genreStats = {};
-
+        
         games.forEach(game => {
             userStats[game.addedBy] = (userStats[game.addedBy] || 0) + 1;
             genreStats[game.genre] = (genreStats[game.genre] || 0) + 1;
         });
-
+        
         const topContributors = Object.entries(userStats)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 3)
@@ -812,26 +827,26 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'setroles') {
         const action = interaction.options.getString('action');
-
+        
         if (action === 'add') {
             const role = interaction.options.getRole('role');
-
+            
             if (config.allowedRoles.includes(role.id)) {
                 return interaction.reply({
                     content: `❌ Role ${role.name} already has permission!`,
                     ephemeral: true
                 });
             }
-
+            
             config.allowedRoles.push(role.id);
             saveConfig();
-
+            
             return interaction.reply(`✅ Added ${role.name} to allowed roles!`);
         }
-
+        
         else if (action === 'remove') {
             const role = interaction.options.getRole('role');
-
+            
             const index = config.allowedRoles.indexOf(role.id);
             if (index === -1) {
                 return interaction.reply({
@@ -839,44 +854,44 @@ client.on('interactionCreate', async interaction => {
                     ephemeral: true
                 });
             }
-
+            
             config.allowedRoles.splice(index, 1);
             saveConfig();
-
+            
             return interaction.reply(`✅ Removed ${role.name}!`);
         }
-
+        
         else if (action === 'list') {
             if (config.allowEveryone) {
                 return interaction.reply('📋 **Everyone** can manage games!');
             }
-
+            
             if (config.allowedRoles.length === 0) {
                 return interaction.reply('📋 No roles yet! Only server owner can manage.');
             }
-
+            
             const rolesList = config.allowedRoles
                 .map(roleId => {
                     const role = interaction.guild.roles.cache.get(roleId);
                     return role ? `• ${role.name}` : `• Unknown Role`;
                 })
                 .join('\n');
-
+            
             const embed = new EmbedBuilder()
                 .setColor(0x0099FF)
                 .setTitle('🔒 Allowed Roles')
                 .setDescription(rolesList)
                 .setFooter({ text: 'Server owner always has permission' })
                 .setTimestamp();
-
+            
             return interaction.reply({ embeds: [embed] });
         }
-
+        
         else if (action === 'everyone') {
             const enable = interaction.options.getBoolean('enable');
             config.allowEveryone = enable;
             saveConfig();
-
+            
             return interaction.reply(enable ? '✅ Everyone can now manage games!' : '✅ Restricted to roles only!');
         }
     }
@@ -903,7 +918,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
 
         let gameInfo = await getGameInfo(gameId);
-
+        
         if (!gameInfo) {
             gameInfo = {
                 id: gameId,
@@ -973,7 +988,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         const game = games[gameIndex];
-
+        
         if (game.addedByUserId !== interaction.user.id && !isBotAdmin(interaction.member)) {
             return interaction.reply({
                 content: `❌ You can only remove your own games!\nThis was added by **${game.addedBy}**`,
@@ -1018,14 +1033,14 @@ client.on('interactionCreate', async interaction => {
 
         for (const [genre, genreGames] of Object.entries(gamesByGenre)) {
             const genreIcon = GENRE_ICONS[genre] || '🎮';
-
+            
             const gamesList = await Promise.all(
                 genreGames.map(async (game) => {
                     const uptime = Date.now() - game.addedAt;
                     const uptimeText = formatUptime(uptime);
                     const stats = await getGameStats(game.id);
                     const displayName = game.customName || game.name;
-
+                    
                     return `**${displayName}** (ID: ${game.id})\n⏱️ ${uptimeText} | 👥 ${stats.playing}/${stats.maxPlayers}`;
                 })
             );
@@ -1072,7 +1087,7 @@ app.get('/api/test', (req, res) => {
 
 app.get('/api/games', async (req, res) => {
     console.log('📥 Games endpoint hit!');
-
+    
     const gamesWithStats = await Promise.all(
         games.map(async (g) => {
             const stats = await getGameStats(g.id);
