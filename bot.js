@@ -184,7 +184,7 @@ function formatUptime(ms) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🧹 OTOMATIK TEMİZLEME SİSTEMİ - 15 DAKİKADA BİR
+// 🧹 OTOMATIK TEMİZLEME SİSTEMİ - 5 DAKİKADA BİR (773 HATASI)
 // ═══════════════════════════════════════════════════════════
 
 async function checkGameExists(gameId) {
@@ -195,9 +195,9 @@ async function checkGameExists(gameId) {
         
         console.log(`📡 Universe API Response: ${universeResponse.status}`);
         
-        // SADECE 404 = deleted
-        if (universeResponse.status === 404) {
-            console.log(`❌ Game ${gameId} is DELETED (404)`);
+        // SADECE 773 = teleport error (deleted game)
+        if (universeResponse.status === 773) {
+            console.log(`❌ Game ${gameId} is DELETED (773 - Teleport Error)`);
             return false;
         }
         
@@ -219,8 +219,8 @@ async function checkGameExists(gameId) {
         
         console.log(`📡 Games API Response: ${gameResponse.status}`);
         
-        if (gameResponse.status === 404) {
-            console.log(`❌ Game ${gameId} data not found (404)`);
+        if (gameResponse.status === 773) {
+            console.log(`❌ Game ${gameId} data not found (773 - Teleport Error)`);
             return false;
         }
         
@@ -248,7 +248,7 @@ async function checkGameExists(gameId) {
 
 async function autoCleanupDeletedGames() {
     console.log('\n════════════════════════════════════════');
-    console.log('🧹 AUTO-CLEANUP STARTED');
+    console.log('🧹 AUTO-CLEANUP STARTED (773 Error Check)');
     console.log(`🕐 Time: ${new Date().toLocaleString()}`);
     console.log(`📊 Total games: ${games.length}`);
     console.log('════════════════════════════════════════\n');
@@ -267,7 +267,7 @@ async function autoCleanupDeletedGames() {
         const exists = await checkGameExists(game.id);
         
         if (!exists) {
-            console.log(`🗑️ MARKED FOR DELETION: ${game.name}`);
+            console.log(`🗑️ MARKED FOR DELETION: ${game.name} (773 Error)`);
             deletedGames.push(game);
         } else {
             console.log(`✅ KEEPING: ${game.name}`);
@@ -297,13 +297,13 @@ async function autoCleanupDeletedGames() {
                 const embed = new EmbedBuilder()
                     .setColor(0xFF6B6B)
                     .setTitle('🗑️ Game Automatically Removed')
-                    .setDescription('One of your games was removed because it no longer exists on Roblox (404 Error).')
+                    .setDescription('One of your games was removed because it has a teleport error (773 - Game deleted/unavailable).')
                     .addFields(
                         { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
                         { name: '🆔 Game ID', value: game.id, inline: true },
                         { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
                     )
-                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup' })
+                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup (773 Error)' })
                     .setTimestamp();
                 
                 await user.send({ embeds: [embed] });
@@ -324,9 +324,9 @@ client.once('ready', () => {
     loadGames();
     loadConfig();
     
-    console.log('\n⏰ Auto-cleanup schedule:');
+    console.log('\n⏰ Auto-cleanup schedule (773 Error Check):');
     console.log('   📍 First run: in 30 seconds');
-    console.log('   🔁 Repeat: every 15 minutes\n');
+    console.log('   🔁 Repeat: every 5 minutes\n');
     
     // İlk kontrol 30 saniye sonra
     setTimeout(() => {
@@ -334,11 +334,11 @@ client.once('ready', () => {
         autoCleanupDeletedGames();
     }, 30000);
     
-    // Her 15 dakikada bir
+    // Her 5 dakikada bir
     setInterval(() => {
         console.log('🚀 Running scheduled auto-cleanup...\n');
         autoCleanupDeletedGames();
-    }, 15 * 60 * 1000); // 15 dakika
+    }, 5 * 60 * 1000); // 5 dakika
 });
 
 client.on('interactionCreate', async interaction => {
@@ -548,7 +548,7 @@ client.on('interactionCreate', async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor(0xFFA500)
-            .setTitle('🔍 Checking All Games...')
+            .setTitle('🔍 Checking All Games (773 Error)...')
             .setDescription('Please wait while I verify all games...')
             .setTimestamp();
 
@@ -579,7 +579,7 @@ client.on('interactionCreate', async interaction => {
 
             const resultEmbed = new EmbedBuilder()
                 .setColor(0xFF0000)
-                .setTitle('🗑️ Deleted Games Found & Removed')
+                .setTitle('🗑️ Deleted Games Found & Removed (773 Error)')
                 .setDescription(deletedList)
                 .addFields(
                     { name: 'Total Checked', value: `${games.length + deletedGames.length}`, inline: true },
@@ -598,7 +598,7 @@ client.on('interactionCreate', async interaction => {
                     const notifEmbed = new EmbedBuilder()
                         .setColor(0xFF6B6B)
                         .setTitle('🗑️ Your Game Was Removed')
-                        .setDescription('One of your games was removed because it no longer exists on Roblox.')
+                        .setDescription('One of your games was removed because it has a teleport error (773).')
                         .addFields(
                             { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
                             { name: '🆔 Game ID', value: game.id, inline: true }
@@ -756,7 +756,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 {
                     name: '🎮 Game Commands',
-                    value: '`/addgame` - Add game (with genre)\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check deleted games',
+                    value: '`/addgame` - Add game (with genre)\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check deleted games (773)',
                     inline: false
                 },
                 {
@@ -775,7 +775,7 @@ client.on('interactionCreate', async interaction => {
                     inline: false
                 }
             )
-            .setFooter({ text: 'Retreat Gateway - Auto-cleanup every 15 minutes' })
+            .setFooter({ text: 'Retreat Gateway - Auto-cleanup every 5 minutes (773 Error)' })
             .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
