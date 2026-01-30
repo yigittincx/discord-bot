@@ -75,17 +75,7 @@ const commands = [
     },
     {
         name: 'checkgames',
-        description: '🔍 Check all games for 773 errors and remove them (Admin only)'
-    },
-    {
-        name: 'test773',
-        description: '🧪 Test a single game for 773 error (Admin only)',
-        options: [{
-            name: 'gameid',
-            description: 'Game ID to test',
-            type: 3,
-            required: true
-        }]
+        description: '🔍 Check all games and remove deleted ones (Admin only)'
     },
     {
         name: 'setroles',
@@ -171,14 +161,13 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
     try {
-        console.log('🔄 Registering commands with 773 detection...');
+        console.log('🔄 Registering commands...');
         await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
             { body: commands }
         );
         
         console.log('✅ Commands registered successfully!');
-        console.log('✅ New command added: /test773');
     } catch (error) {
         console.error('❌ Error:', error);
         process.exit(1);
