@@ -191,53 +191,78 @@ function formatUptime(ms) {
 
 async function verify773Error(gameId) {
     try {
-        console.log(`🔍 Verifying game ${gameId} for 773 error...`);
+        console.log(`════════════════════════════════════════`);
+        console.log(`🔍 VERIFYING GAME ${gameId} FOR 773 ERROR`);
+        console.log(`════════════════════════════════════════`);
         
         // Check if game exists via API
-        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        const universeURL = `https://apis.roblox.com/universes/v1/places/${gameId}/universe`;
+        console.log(`📡 Fetching: ${universeURL}`);
         
-        console.log(`📡 Universe API Response: ${universeResponse.status}`);
+        const universeResponse = await fetch(universeURL);
+        
+        console.log(`📊 Universe API Response Status: ${universeResponse.status}`);
         
         // 400 or 404 = Game not found (would give 773 on teleport)
         if (universeResponse.status === 400 || universeResponse.status === 404) {
-            console.log(`❌ VERIFIED: Game ${gameId} NOT FOUND - 773 error confirmed`);
+            console.log(`❌ CONFIRMED 773: Game ${gameId} NOT FOUND (Status ${universeResponse.status})`);
+            console.log(`   This game will cause 773 teleport error`);
+            console.log(`════════════════════════════════════════\n`);
             return true; // Confirmed 773 error
         }
         
         if (!universeResponse.ok) {
-            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - Cannot verify`);
+            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - Cannot verify (temporary issue?)`);
+            console.log(`════════════════════════════════════════\n`);
             return false; // Cannot verify
         }
         
         const universeData = await universeResponse.json();
+        console.log(`📦 Universe Data:`, JSON.stringify(universeData, null, 2));
         
         if (!universeData.universeId) {
-            console.log(`❌ VERIFIED: Game ${gameId} - No universeId - 773 error confirmed`);
+            console.log(`❌ CONFIRMED 773: Game ${gameId} - No universeId found`);
+            console.log(`   This game will cause 773 teleport error`);
+            console.log(`════════════════════════════════════════\n`);
             return true; // Confirmed 773 error
         }
         
         const universeId = universeData.universeId;
-        const gameResponse = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        console.log(`✅ Found Universe ID: ${universeId}`);
         
-        console.log(`📡 Games API Response: ${gameResponse.status}`);
+        const gameURL = `https://games.roblox.com/v1/games?universeIds=${universeId}`;
+        console.log(`📡 Fetching: ${gameURL}`);
+        
+        const gameResponse = await fetch(gameURL);
+        console.log(`📊 Games API Response Status: ${gameResponse.status}`);
         
         if (!gameResponse.ok) {
             console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - Cannot verify`);
+            console.log(`════════════════════════════════════════\n`);
             return false;
         }
         
         const data = await gameResponse.json();
+        console.log(`📦 Game Data:`, JSON.stringify(data, null, 2));
         
         if (!data.data || data.data.length === 0) {
-            console.log(`❌ VERIFIED: Game ${gameId} - No game data - 773 error confirmed`);
+            console.log(`❌ CONFIRMED 773: Game ${gameId} - No game data returned`);
+            console.log(`   This game will cause 773 teleport error`);
+            console.log(`════════════════════════════════════════\n`);
             return true; // Confirmed 773 error
         }
         
-        console.log(`✅ Game ${gameId} EXISTS - Report is FALSE POSITIVE`);
+        console.log(`✅ FALSE POSITIVE: Game ${gameId} EXISTS and is accessible via API`);
+        console.log(`   Game Name: ${data.data[0].name}`);
+        console.log(`   This is likely a group-only game or has other restrictions`);
+        console.log(`   Players can access it if they meet requirements`);
+        console.log(`════════════════════════════════════════\n`);
         return false; // Game exists, no 773 error
         
     } catch (error) {
-        console.error(`❌ Error verifying game ${gameId}:`, error.message);
+        console.error(`❌ ERROR while verifying game ${gameId}:`, error.message);
+        console.log(`   Network error - keeping game as safe choice`);
+        console.log(`════════════════════════════════════════\n`);
         return false; // Cannot verify, don't delete
     }
 }
