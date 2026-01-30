@@ -32,14 +32,12 @@ const commands = [
     {
         name: 'removegame',
         description: 'Remove your game',
-        options: [
-            {
-                name: 'gameid',
-                description: 'Game ID to be deleted',
-                type: 3,
-                required: true
-            }
-        ]
+        options: [{
+            name: 'gameid',
+            description: 'Game ID to be deleted',
+            type: 3,
+            required: true
+        }]
     },
     {
         name: 'customizegame',
@@ -69,15 +67,15 @@ const commands = [
     },
     {
         name: 'listgames',
-        description: 'List all games organized by genre'
+        description: 'List Games'
     },
     {
         name: 'cleargames',
-        description: 'Clear all games (Admin only)'
+        description: 'Clear All Games'
     },
     {
         name: 'checkgames',
-        description: 'Check all games and remove deleted ones (Admin only)'
+        description: '🔍 Check all games and remove deleted ones (Admin only)'
     },
     {
         name: 'setroles',
@@ -85,7 +83,7 @@ const commands = [
         options: [
             {
                 name: 'action',
-                description: 'Select action',
+                description: 'Action',
                 type: 3,
                 required: true,
                 choices: [
@@ -97,13 +95,13 @@ const commands = [
             },
             {
                 name: 'role',
-                description: 'Select role',
+                description: 'Role',
                 type: 8,
                 required: false
             },
             {
                 name: 'enable',
-                description: 'Enable/Disable everyone access',
+                description: 'Enable/Disable',
                 type: 5,
                 required: false
             }
@@ -111,7 +109,7 @@ const commands = [
     },
     {
         name: 'setchannel',
-        description: 'Set bot channel restriction (Admin only)',
+        description: 'Set bot channel (Admin only)',
         options: [
             {
                 name: 'channel',
@@ -127,7 +125,7 @@ const commands = [
         options: [
             {
                 name: 'action',
-                description: 'Select action',
+                description: 'Action',
                 type: 3,
                 required: true,
                 choices: [
@@ -138,7 +136,7 @@ const commands = [
             },
             {
                 name: 'user',
-                description: 'Select user',
+                description: 'User',
                 type: 6,
                 required: false
             }
@@ -146,16 +144,16 @@ const commands = [
     },
     {
         name: 'help',
-        description: 'Show help menu with all commands'
+        description: 'Help menu'
     },
     {
         name: 'stats',
-        description: 'Show hub statistics and top contributors'
+        description: 'Statistics'
     }
 ];
 
 if (!TOKEN) {
-    console.error('❌ DISCORD_TOKEN not found in environment variables!');
+    console.error('❌ DISCORD_TOKEN not found!');
     process.exit(1);
 }
 
@@ -163,22 +161,15 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
     try {
-        console.log('🔄 Registering slash commands...');
-        console.log(`📊 Total commands: ${commands.length}`);
-        
+        console.log('🔄 Registering commands...');
         await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
             { body: commands }
         );
         
-        console.log('✅ All commands registered successfully!');
-        console.log('🎮 Commands available:');
-        commands.forEach((cmd, index) => {
-            console.log(`   ${index + 1}. /${cmd.name} - ${cmd.description}`);
-        });
-        
+        console.log('✅ Commands registered successfully!');
     } catch (error) {
-        console.error('❌ Error registering commands:', error);
+        console.error('❌ Error:', error);
         process.exit(1);
     }
 })();
