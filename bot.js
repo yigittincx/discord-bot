@@ -1,7 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
-const noblox = require('noblox.js');
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds] 
@@ -25,9 +24,6 @@ app.use((req, res, next) => {
 const TOKEN = process.env.DISCORD_TOKEN;
 const PORT = process.env.PORT || 3000;
 
-// 🤖 ROBLOX BOT HESABI BİLGİLERİ
-const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE; // .ROBLOSECURITY cookie
-
 let config = {
     allowedRoles: [],
     allowEveryone: false,
@@ -37,7 +33,6 @@ let config = {
 };
 
 let games = [];
-let robloxLoggedIn = false;
 
 // 🎮 GENRE İKONLARI
 const GENRE_ICONS = {
@@ -189,265 +184,24 @@ function formatUptime(ms) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🤖 ROBLOX HESABINA GİRİŞ
+// 🧹 OTOMATIK TEMİZLEME SİSTEMİ - 15 DAKİKADA BİR
 // ═══════════════════════════════════════════════════════════
 
-async function loginToRoblox() {
-    if (!ROBLOX_COOKIE) {
-        console.error('❌ ROBLOX_COOKIE environment variable not found!');
-        console.log('💡 Set it in Railway: ROBLOX_COOKIE=your_.ROBLOSECURITY_cookie');
-        return false;
-    }
-
-    try {
-        console.log('🤖 Logging into Roblox...');
-        
-        const currentUser = await noblox.setCookie(ROBLOX_COOKIE);
-        
-        console.log(`✅ Logged in as: ${currentUser.UserName} (ID: ${currentUser.UserID})`);
-        robloxLoggedIn = true;
-        
-        return true;
-    } catch (error) {
-        console.error('❌ Failed to login to Roblox:', error.message);
-        console.log('💡 Make sure your .ROBLOSECURITY cookie is valid and not expired!');
-        robloxLoggedIn = false;
-        return false;
-    }
-}
-
-// ═══════════════════════════════════════════════════════════
-// 🎮 773 ERROR KONTROLÜ (ROBLOX HESABI İLE)
-// ═══════════════════════════════════════════════════════════
-
-async function check773ErrorWithRoblox(gameId, gameName) {
-    if (!robloxLoggedIn) {
-        console.log('⚠️ Roblox not logged in, skipping 773 check for', gameId);
-        return { has773Error: false, reason: 'Not logged in' };
-    }
-
-    try {
-        console.log(`\n🎮 Testing join for: ${gameName} (${gameId})`);
-        
-        // Oyunun PlaceId'sini al
-        const placeId = gameId;
-        
-        // Oyuna katılmayı dene (sadece test için, gerçekte ışınlanmaz)
-        console.log('📡 Attempting to get game instance info...');
-        
-        // noblox.js kullanarak oyun bilgilerini kontrol et
-        const gameDetails = await noblox.getPlaceInfo(placeId);
-        
-        console.log('Game Details:', gameDetails);
-        
-        // Oyunun erişilebilir olup olmadığını kontrol et
-        if (!gameDetails) {
-            console.log('❌ Could not get game details - likely deleted or private');
-            return { 
-                has773Error: true, 
-                reason: 'Game not accessible (404)',
-                errorType: 'DELETED_OR_PRIVATE'
-            };
-        }
-        
-        // Grup oyunu mu kontrol et
-        if (gameDetails.builder) {
-            console.log(`🏢 Game is owned by: ${gameDetails.builder}`);
-        }
-        
-        // Oyuna katılabilir mi test et
-        try {
-            // Game instances bilgisini al
-            const instances = await noblox.getGameInstances(placeId);
-            
-            if (!instances || instances.length === 0) {
-                console.log('⚠️ No active game servers found');
-            } else {
-                console.log(`✅ Found ${instances.length} active server(s)`);
-            }
-            
-        } catch (instanceError) {
-            console.log('Instance check error:', instanceError.message);
-            
-            // 773 error pattern kontrolü
-            if (instanceError.message.includes('773') || 
-                instanceError.message.includes('TeleportFailure') ||
-                instanceError.message.includes('Unauthorized') ||
-                instanceError.message.includes('not authorized')) {
-                
-                console.log('🚨 DETECTED 773 ERROR!');
-                return { 
-                    has773Error: true, 
-                    reason: instanceError.message,
-                    errorType: '773_TELEPORT_ERROR'
-                };
-            }
-        }
-        
-        console.log('✅ No 773 error detected for this game');
-        return { has773Error: false, reason: 'Game accessible' };
-        
-    } catch (error) {
-        console.error('❌ Error checking 773:', error.message);
-        
-        // Error mesajında 773 var mı kontrol et
-        const errorMsg = error.message.toLowerCase();
-        
-        if (errorMsg.includes('773') || 
-            errorMsg.includes('teleport') ||
-            errorMsg.includes('unauthorized') ||
-            errorMsg.includes('not authorized') ||
-            errorMsg.includes('you do not have permission')) {
-            
-            console.log('🚨 DETECTED 773 ERROR in exception!');
-            return { 
-                has773Error: true, 
-                reason: error.message,
-                errorType: '773_EXCEPTION'
-            };
-        }
-        
-        return { 
-            has773Error: false, 
-            reason: 'Error but not 773: ' + error.message 
-        };
-    }
-}
-
-// ═══════════════════════════════════════════════════════════
-// 🧹 OTOMATIK 773 TEMİZLEME - 15 DAKİKADA BİR
-// ═══════════════════════════════════════════════════════════
-
-async function auto773Cleanup() {
-    console.log('\n════════════════════════════════════════');
-    console.log('🤖 AUTO 773-ERROR CLEANUP STARTED');
-    console.log(`🕐 Time: ${new Date().toLocaleString()}`);
-    console.log(`📊 Total games: ${games.length}`);
-    console.log(`🔐 Roblox Logged In: ${robloxLoggedIn ? 'YES' : 'NO'}`);
-    console.log('════════════════════════════════════════\n');
-    
-    if (games.length === 0) {
-        console.log('✅ No games to check!\n');
-        return;
-    }
-    
-    if (!robloxLoggedIn) {
-        console.log('⚠️ Roblox not logged in! Attempting login...\n');
-        const loginSuccess = await loginToRoblox();
-        
-        if (!loginSuccess) {
-            console.log('❌ Cannot perform 773 check without Roblox login!\n');
-            return;
-        }
-    }
-    
-    const games773Error = [];
-    const deletedGames = [];
-    
-    for (let i = 0; i < games.length; i++) {
-        const game = games[i];
-        console.log(`\n[${i + 1}/${games.length}] Checking: ${game.name} (${game.id})`);
-        
-        // Önce oyunun silinip silinmediğini kontrol et
-        const exists = await checkGameExists(game.id);
-        
-        if (!exists) {
-            console.log(`🗑️ GAME DELETED: ${game.name}`);
-            deletedGames.push(game);
-            continue;
-        }
-        
-        // 773 error kontrolü
-        const result = await check773ErrorWithRoblox(game.id, game.name);
-        
-        if (result.has773Error) {
-            console.log(`🚨 773 ERROR DETECTED: ${game.name}`);
-            console.log(`   Reason: ${result.reason}`);
-            console.log(`   Type: ${result.errorType}`);
-            games773Error.push({ ...game, errorReason: result.reason, errorType: result.errorType });
-        } else {
-            console.log(`✅ GAME OK: ${game.name}`);
-        }
-        
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 saniye bekle
-    }
-    
-    const totalRemoved = games773Error.length + deletedGames.length;
-    
-    console.log('\n════════════════════════════════════════');
-    console.log('📈 CLEANUP SUMMARY:');
-    console.log(`✅ Valid Games: ${games.length - totalRemoved}`);
-    console.log(`🚨 773 Errors: ${games773Error.length}`);
-    console.log(`🗑️ Deleted Games: ${deletedGames.length}`);
-    console.log(`❌ Total Removed: ${totalRemoved}`);
-    console.log('════════════════════════════════════════\n');
-    
-    // Oyunları kaldır ve bildir
-    const allRemovedGames = [...games773Error, ...deletedGames];
-    
-    if (allRemovedGames.length > 0) {
-        games = games.filter(g => !allRemovedGames.find(r => r.id === g.id));
-        saveGames();
-        
-        console.log(`✅ Removed ${allRemovedGames.length} game(s) from database`);
-        
-        // Kullanıcılara bildirim gönder
-        for (const game of allRemovedGames) {
-            try {
-                console.log(`📧 Notifying ${game.addedBy}...`);
-                const user = await client.users.fetch(game.addedByUserId);
-                
-                const is773 = games773Error.includes(game);
-                
-                const embed = new EmbedBuilder()
-                    .setColor(is773 ? 0xFF6B6B : 0xFF4444)
-                    .setTitle(is773 ? '🚨 Game Removed - 773 Error' : '🗑️ Game Removed - Deleted')
-                    .setDescription(is773 ? 
-                        'Your game was removed because the bot detected a **773 Teleport Error** when trying to join.\n\n**This means:**\n• The game is private/group-only\n• Bot account cannot access it\n• Players will get Error 773 when trying to join' :
-                        'Your game was removed because it no longer exists on Roblox (404 Error).'
-                    )
-                    .addFields(
-                        { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
-                        { name: '🆔 Game ID', value: game.id, inline: true },
-                        { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
-                    )
-                    .setFooter({ text: 'Retreat Gateway - Auto 773 Cleanup' })
-                    .setTimestamp();
-                
-                if (is773 && game.errorReason) {
-                    embed.addFields({ 
-                        name: '⚠️ Error Details', 
-                        value: `\`\`\`${game.errorReason}\`\`\``, 
-                        inline: false 
-                    });
-                }
-                
-                await user.send({ embeds: [embed] });
-                console.log(`✅ Notified ${game.addedBy}`);
-            } catch (error) {
-                console.error(`❌ Failed to notify ${game.addedBy}:`, error.message);
-            }
-        }
-    } else {
-        console.log('✅ No games removed. All games are valid!');
-    }
-    
-    console.log('\n🧹 AUTO 773-CLEANUP FINISHED\n');
-}
-
-// Eski checkGameExists fonksiyonu (sadece silinen oyunlar için)
 async function checkGameExists(gameId) {
     try {
-        console.log(`🔍 Checking if game ${gameId} exists...`);
+        console.log(`🔍 Checking game ${gameId}...`);
         
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         
+        console.log(`📡 Universe API Response: ${universeResponse.status}`);
+        
+        // SADECE 404 = deleted
         if (universeResponse.status === 404) {
             console.log(`❌ Game ${gameId} is DELETED (404)`);
             return false;
         }
         
+        // Diğer hatalar = oyunu koru
         if (!universeResponse.ok) {
             console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - KEEPING`);
             return true;
@@ -456,7 +210,29 @@ async function checkGameExists(gameId) {
         const universeData = await universeResponse.json();
         
         if (!universeData.universeId) {
-            console.log(`⚠️ Game ${gameId} - No universeId - KEEPING`);
+            console.log(`⚠️ Game ${gameId} - No universeId - KEEPING (might be private)`);
+            return true;
+        }
+        
+        const universeId = universeData.universeId;
+        const gameResponse = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        
+        console.log(`📡 Games API Response: ${gameResponse.status}`);
+        
+        if (gameResponse.status === 404) {
+            console.log(`❌ Game ${gameId} data not found (404)`);
+            return false;
+        }
+        
+        if (!gameResponse.ok) {
+            console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - KEEPING`);
+            return true;
+        }
+        
+        const data = await gameResponse.json();
+        
+        if (!data.data || data.data.length === 0) {
+            console.log(`⚠️ Game ${gameId} - Empty data - KEEPING`);
             return true;
         }
         
@@ -465,38 +241,105 @@ async function checkGameExists(gameId) {
         
     } catch (error) {
         console.error(`❌ Error checking game ${gameId}:`, error.message);
+        console.log(`⚠️ Network error for ${gameId} - KEEPING game as safe`);
         return true;
     }
 }
 
-client.once('ready', async () => {
+async function autoCleanupDeletedGames() {
+    console.log('\n════════════════════════════════════════');
+    console.log('🧹 AUTO-CLEANUP STARTED');
+    console.log(`🕐 Time: ${new Date().toLocaleString()}`);
+    console.log(`📊 Total games: ${games.length}`);
+    console.log('════════════════════════════════════════\n');
+    
+    if (games.length === 0) {
+        console.log('✅ No games to check!\n');
+        return;
+    }
+    
+    const deletedGames = [];
+    
+    for (let i = 0; i < games.length; i++) {
+        const game = games[i];
+        console.log(`\n[${i + 1}/${games.length}] Checking: ${game.name} (${game.id})`);
+        
+        const exists = await checkGameExists(game.id);
+        
+        if (!exists) {
+            console.log(`🗑️ MARKED FOR DELETION: ${game.name}`);
+            deletedGames.push(game);
+        } else {
+            console.log(`✅ KEEPING: ${game.name}`);
+        }
+        
+        // Rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    console.log('\n════════════════════════════════════════');
+    console.log('📈 CLEANUP SUMMARY:');
+    console.log(`✅ Kept: ${games.length - deletedGames.length}`);
+    console.log(`❌ Deleted: ${deletedGames.length}`);
+    console.log('════════════════════════════════════════\n');
+    
+    if (deletedGames.length > 0) {
+        games = games.filter(g => !deletedGames.find(d => d.id === g.id));
+        saveGames();
+        
+        console.log(`✅ Removed ${deletedGames.length} game(s) from database`);
+        
+        for (const game of deletedGames) {
+            try {
+                console.log(`📧 Sending notification to ${game.addedBy}...`);
+                const user = await client.users.fetch(game.addedByUserId);
+                
+                const embed = new EmbedBuilder()
+                    .setColor(0xFF6B6B)
+                    .setTitle('🗑️ Game Automatically Removed')
+                    .setDescription('One of your games was removed because it no longer exists on Roblox (404 Error).')
+                    .addFields(
+                        { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
+                        { name: '🆔 Game ID', value: game.id, inline: true },
+                        { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
+                    )
+                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup' })
+                    .setTimestamp();
+                
+                await user.send({ embeds: [embed] });
+                console.log(`✅ Notified ${game.addedBy}`);
+            } catch (error) {
+                console.error(`❌ Failed to notify ${game.addedBy}:`, error.message);
+            }
+        }
+    } else {
+        console.log('✅ No deleted games found. All games are valid!');
+    }
+    
+    console.log('\n🧹 AUTO-CLEANUP FINISHED\n');
+}
+
+client.once('ready', () => {
     console.log(`✅ Bot is online as ${client.user.tag}`);
     loadGames();
     loadConfig();
     
-    // Roblox'a giriş yap
-    console.log('\n🤖 Initializing Roblox login...');
-    await loginToRoblox();
-    
-    console.log('\n⏰ Auto 773-cleanup schedule:');
+    console.log('\n⏰ Auto-cleanup schedule:');
     console.log('   📍 First run: in 30 seconds');
     console.log('   🔁 Repeat: every 15 minutes\n');
     
     // İlk kontrol 30 saniye sonra
     setTimeout(() => {
-        console.log('🚀 Running first auto 773-cleanup...\n');
-        auto773Cleanup();
+        console.log('🚀 Running first auto-cleanup...\n');
+        autoCleanupDeletedGames();
     }, 30000);
     
     // Her 15 dakikada bir
     setInterval(() => {
-        console.log('🚀 Running scheduled auto 773-cleanup...\n');
-        auto773Cleanup();
-    }, 15 * 60 * 1000);
+        console.log('🚀 Running scheduled auto-cleanup...\n');
+        autoCleanupDeletedGames();
+    }, 15 * 60 * 1000); // 15 dakika
 });
-
-// ... (Tüm diğer Discord komutları aynı kalacak)
-// Modal, button interactions vb. aynı
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
@@ -604,7 +447,7 @@ client.on('interactionCreate', async interaction => {
             } catch (error) {
                 console.error('Failed to send DM to leader:', error);
                 await interaction.editReply({
-                    content: '❌ Failed to send link!',
+                    content: '❌ Failed to send link! The leader might have DMs disabled or the user was not found.',
                 });
             }
         }
@@ -645,7 +488,7 @@ client.on('interactionCreate', async interaction => {
                     { name: '👤 Customized by', value: interaction.user.tag, inline: true },
                     { name: '\u200B', value: '\u200B', inline: false }
                 )
-                .setFooter({ text: 'Changes are now live!' })
+                .setFooter({ text: 'Changes are now live in your Roblox hub!' })
                 .setTimestamp();
             
             if (customName.trim()) {
@@ -661,7 +504,7 @@ client.on('interactionCreate', async interaction => {
             }
             
             if (!customName.trim() && !customDescription.trim()) {
-                embed.setDescription('⚠️ No changes made.');
+                embed.setDescription('⚠️ No changes made. Both fields were empty.');
                 embed.setColor(0xFFAA00);
             }
             
@@ -673,7 +516,7 @@ client.on('interactionCreate', async interaction => {
 
     const { commandName } = interaction;
 
-    const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats', 'customizegame', 'checkgames', 'test773'];
+    const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats', 'customizegame', 'checkgames'];
     if (channelRestrictedCommands.includes(commandName)) {
         if (config.allowedChannel && interaction.channelId !== config.allowedChannel) {
             const channel = interaction.guild.channels.cache.get(config.allowedChannel);
@@ -687,55 +530,17 @@ client.on('interactionCreate', async interaction => {
     const gameManagementCommands = ['addgame', 'cleargames'];
     if (gameManagementCommands.includes(commandName) && !hasPermission(interaction.member)) {
         return interaction.reply({
-            content: '❌ You don\'t have permission!',
+            content: '❌ You don\'t have permission!\n💡 Ask admin to add your role: `/setroles action:add role:@YourRole`',
             ephemeral: true
         });
     }
     
-    const adminCommands = ['setroles', 'setchannel', 'setadmin', 'checkgames', 'test773'];
+    const adminCommands = ['setroles', 'setchannel', 'setadmin', 'checkgames'];
     if (adminCommands.includes(commandName) && !isBotAdmin(interaction.member)) {
         return interaction.reply({
             content: '❌ Only bot admins can use this command!',
             ephemeral: true
         });
-    }
-
-    // 🆕 YENİ KOMUT: Tek bir oyunu test et
-    if (commandName === 'test773') {
-        const gameId = interaction.options.getString('gameid');
-        
-        if (!robloxLoggedIn) {
-            return interaction.reply({
-                content: '❌ Roblox bot is not logged in! Cannot perform 773 check.',
-                ephemeral: true
-            });
-        }
-        
-        await interaction.deferReply();
-        
-        const game = games.find(g => g.id === gameId);
-        const gameName = game ? (game.customName || game.name) : `Game ${gameId}`;
-        
-        const result = await check773ErrorWithRoblox(gameId, gameName);
-        
-        const embed = new EmbedBuilder()
-            .setColor(result.has773Error ? 0xFF0000 : 0x00FF00)
-            .setTitle(result.has773Error ? '🚨 773 Error Detected!' : '✅ No 773 Error')
-            .addFields(
-                { name: '🎮 Game', value: gameName, inline: true },
-                { name: '🆔 Game ID', value: gameId, inline: true },
-                { name: '📊 Result', value: result.has773Error ? '❌ BLOCKED' : '✅ ACCESSIBLE', inline: true }
-            )
-            .setTimestamp();
-        
-        if (result.has773Error) {
-            embed.addFields(
-                { name: '⚠️ Error Type', value: result.errorType || 'Unknown', inline: true },
-                { name: '📝 Reason', value: `\`\`\`${result.reason}\`\`\``, inline: false }
-            );
-        }
-        
-        await interaction.editReply({ embeds: [embed] });
     }
 
     if (commandName === 'checkgames') {
@@ -744,24 +549,79 @@ client.on('interactionCreate', async interaction => {
         const embed = new EmbedBuilder()
             .setColor(0xFFA500)
             .setTitle('🔍 Checking All Games...')
-            .setDescription('Running full 773 error + deletion check...')
+            .setDescription('Please wait while I verify all games...')
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });
 
-        // Manuel cleanup çalıştır
-        await auto773Cleanup();
+        const deletedGames = [];
+        const validGames = [];
 
-        const resultEmbed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('✅ Check Complete')
-            .setDescription('Auto-cleanup finished! Check console for details.')
-            .addFields(
-                { name: 'Total Games Now', value: `${games.length}`, inline: true }
-            )
-            .setTimestamp();
+        for (const game of games) {
+            const exists = await checkGameExists(game.id);
 
-        await interaction.editReply({ embeds: [resultEmbed] });
+            if (!exists) {
+                deletedGames.push(game);
+            } else {
+                validGames.push(game);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        if (deletedGames.length > 0) {
+            games = validGames;
+            saveGames();
+
+            const deletedList = deletedGames
+                .map(g => `• **${g.customName || g.name}** (ID: ${g.id}) - Added by ${g.addedBy}`)
+                .join('\n');
+
+            const resultEmbed = new EmbedBuilder()
+                .setColor(0xFF0000)
+                .setTitle('🗑️ Deleted Games Found & Removed')
+                .setDescription(deletedList)
+                .addFields(
+                    { name: 'Total Checked', value: `${games.length + deletedGames.length}`, inline: true },
+                    { name: 'Valid Games', value: `${validGames.length}`, inline: true },
+                    { name: 'Deleted Games', value: `${deletedGames.length}`, inline: true }
+                )
+                .setFooter({ text: 'Games have been automatically removed from the hub' })
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [resultEmbed] });
+
+            for (const game of deletedGames) {
+                try {
+                    const user = await client.users.fetch(game.addedByUserId);
+
+                    const notifEmbed = new EmbedBuilder()
+                        .setColor(0xFF6B6B)
+                        .setTitle('🗑️ Your Game Was Removed')
+                        .setDescription('One of your games was removed because it no longer exists on Roblox.')
+                        .addFields(
+                            { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
+                            { name: '🆔 Game ID', value: game.id, inline: true }
+                        )
+                        .setTimestamp();
+
+                    await user.send({ embeds: [notifEmbed] });
+                } catch (error) {
+                    console.error(`Could not notify user:`, error.message);
+                }
+            }
+        } else {
+            const resultEmbed = new EmbedBuilder()
+                .setColor(0x00FF00)
+                .setTitle('✅ All Games Valid')
+                .setDescription('All games in the hub are still active on Roblox!')
+                .addFields(
+                    { name: 'Total Games Checked', value: `${games.length}`, inline: true }
+                )
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [resultEmbed] });
+        }
     }
 
     if (commandName === 'customizegame') {
@@ -773,14 +633,14 @@ client.on('interactionCreate', async interaction => {
 
         if (!game) {
             return interaction.reply({
-                content: '❌ Game not found!',
+                content: '❌ Game not found in the hub!',
                 ephemeral: true
             });
         }
 
         if (game.addedByUserId !== interaction.user.id) {
             return interaction.reply({
-                content: `❌ You can only customize your own games!`,
+                content: `❌ You can only customize your own games!\nThis game was added by **${game.addedBy}**`,
                 ephemeral: true
             });
         }
@@ -802,8 +662,15 @@ client.on('interactionCreate', async interaction => {
             .setTitle('✨ Game Customized')
             .addFields(
                 { name: '🎮 Game ID', value: gameId, inline: true },
-                { name: '👤 Customized by', value: interaction.user.tag, inline: true }
+                { name: '👤 Customized by', value: interaction.user.tag, inline: true },
+                { name: '\u200B', value: '\u200B', inline: false },
+                { name: '📝 Old Name', value: oldName, inline: true },
+                { name: '📝 New Name', value: game.customName || oldName, inline: true },
+                { name: '\u200B', value: '\u200B', inline: false },
+                { name: '📄 Old Description', value: oldDesc, inline: false },
+                { name: '📄 New Description', value: game.customDescription || oldDesc, inline: false }
             )
+            .setFooter({ text: 'Changes will appear in Roblox hub' })
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
@@ -847,7 +714,7 @@ client.on('interactionCreate', async interaction => {
         
         else if (action === 'list') {
             if (config.botAdmins.length === 0) {
-                return interaction.reply('📋 No bot admins!');
+                return interaction.reply('📋 No bot admins set! Only server owner has full access.');
             }
             
             const adminsList = config.botAdmins
@@ -861,6 +728,7 @@ client.on('interactionCreate', async interaction => {
                 .setColor(0xFF5555)
                 .setTitle('👑 Bot Admins')
                 .setDescription(adminsList)
+                .setFooter({ text: 'Server owner always has full access' })
                 .setTimestamp();
             
             return interaction.reply({ embeds: [embed] });
@@ -877,18 +745,18 @@ client.on('interactionCreate', async interaction => {
         } else {
             config.allowedChannel = null;
             saveConfig();
-            return interaction.reply('✅ Channel restriction removed!');
+            return interaction.reply('✅ Channel restriction removed! Bot can work in all channels.');
         }
     }
 
     if (commandName === 'help') {
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
-            .setTitle('🤖 Retreat Gateway Bot - 773 Detection Enabled')
+            .setTitle('🤖 Retreat Gateway Bot')
             .addFields(
                 {
                     name: '🎮 Game Commands',
-                    value: '`/addgame` - Add game\n`/removegame` - Remove game\n`/customizegame` - Customize\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check 773 errors\n`/test773` - Test single game',
+                    value: '`/addgame` - Add game (with genre)\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check deleted games',
                     inline: false
                 },
                 {
@@ -898,15 +766,16 @@ client.on('interactionCreate', async interaction => {
                 },
                 {
                     name: '🔒 Admin',
-                    value: '`/setadmin` - Manage admins\n`/setroles` - Manage roles\n`/setchannel` - Set channel',
+                    value: '`/setadmin` - Manage bot admins\n`/setroles` - Manage permissions\n`/setchannel` - Set bot channel',
                     inline: false
                 },
                 {
-                    name: '🤖 Auto 773 Check',
-                    value: 'Bot automatically checks all games every 15 minutes and removes those with 773 errors!',
+                    name: '🎯 Genres',
+                    value: '⚔️ Official | 🗡️ SwordFight | 🔫 Crim | 👋 Slap | 🐐 Goat',
                     inline: false
                 }
             )
+            .setFooter({ text: 'Retreat Gateway - Auto-cleanup every 15 minutes' })
             .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
@@ -941,11 +810,6 @@ client.on('interactionCreate', async interaction => {
                     inline: true
                 },
                 {
-                    name: '🤖 Roblox Status',
-                    value: robloxLoggedIn ? '✅ Logged In' : '❌ Not Logged In',
-                    inline: true
-                },
-                {
                     name: '👑 Top Contributors',
                     value: topContributors || 'No games yet',
                     inline: false
@@ -969,7 +833,7 @@ client.on('interactionCreate', async interaction => {
             
             if (config.allowedRoles.includes(role.id)) {
                 return interaction.reply({
-                    content: `❌ Role already has permission!`,
+                    content: `❌ Role ${role.name} already has permission!`,
                     ephemeral: true
                 });
             }
@@ -977,7 +841,7 @@ client.on('interactionCreate', async interaction => {
             config.allowedRoles.push(role.id);
             saveConfig();
             
-            return interaction.reply(`✅ Added ${role.name}!`);
+            return interaction.reply(`✅ Added ${role.name} to allowed roles!`);
         }
         
         else if (action === 'remove') {
@@ -986,7 +850,7 @@ client.on('interactionCreate', async interaction => {
             const index = config.allowedRoles.indexOf(role.id);
             if (index === -1) {
                 return interaction.reply({
-                    content: `❌ Role doesn't have permission!`,
+                    content: `❌ Role ${role.name} doesn't have permission!`,
                     ephemeral: true
                 });
             }
@@ -999,11 +863,11 @@ client.on('interactionCreate', async interaction => {
         
         else if (action === 'list') {
             if (config.allowEveryone) {
-                return interaction.reply('📋 **Everyone** can manage!');
+                return interaction.reply('📋 **Everyone** can manage games!');
             }
             
             if (config.allowedRoles.length === 0) {
-                return interaction.reply('📋 No roles yet!');
+                return interaction.reply('📋 No roles yet! Only server owner can manage.');
             }
             
             const rolesList = config.allowedRoles
@@ -1017,6 +881,7 @@ client.on('interactionCreate', async interaction => {
                 .setColor(0x0099FF)
                 .setTitle('🔒 Allowed Roles')
                 .setDescription(rolesList)
+                .setFooter({ text: 'Server owner always has permission' })
                 .setTimestamp();
             
             return interaction.reply({ embeds: [embed] });
@@ -1027,7 +892,7 @@ client.on('interactionCreate', async interaction => {
             config.allowEveryone = enable;
             saveConfig();
             
-            return interaction.reply(enable ? '✅ Everyone can manage!' : '✅ Restricted!');
+            return interaction.reply(enable ? '✅ Everyone can now manage games!' : '✅ Restricted to roles only!');
         }
     }
 
@@ -1082,24 +947,29 @@ client.on('interactionCreate', async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
-            .setTitle('✅ Game Added!')
+            .setTitle('✅ Game Added Successfully!')
             .addFields(
                 { name: '🎮 Name', value: gameInfo.name, inline: true },
                 { name: '🆔 ID', value: gameId, inline: true },
-                { name: `${genreIcon} Genre`, value: genre, inline: true }
+                { name: `${genreIcon} Genre`, value: genre, inline: true },
+                { name: '👤 Creator', value: gameInfo.creator, inline: true },
+                { name: '👥 Players', value: `${gameInfo.playing}/${gameInfo.maxPlayers}`, inline: true }
             )
-            .setFooter({ text: 'Will be checked for 773 errors automatically' })
+            .setDescription('**Customize or share this game!**\nUse the buttons below:')
+            .setFooter({ text: 'Only you can use these buttons!' })
             .setTimestamp();
 
         const customizeButton = new ButtonBuilder()
             .setCustomId(`customize_${gameId}`)
-            .setLabel('✨ Customize')
-            .setStyle(ButtonStyle.Primary);
+            .setLabel('✨ Customize Game')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('🎨');
 
         const sendLinkButton = new ButtonBuilder()
             .setCustomId(`sendlink_${gameId}`)
-            .setLabel('📤 Send Link')
-            .setStyle(ButtonStyle.Success);
+            .setLabel('📤 Send Link to profound')
+            .setStyle(ButtonStyle.Success)
+            .setEmoji('🔗');
 
         const row = new ActionRowBuilder().addComponents(customizeButton, sendLinkButton);
 
@@ -1121,7 +991,7 @@ client.on('interactionCreate', async interaction => {
         
         if (game.addedByUserId !== interaction.user.id && !isBotAdmin(interaction.member)) {
             return interaction.reply({
-                content: `❌ You can only remove your own games!`,
+                content: `❌ You can only remove your own games!\nThis was added by **${game.addedBy}**`,
                 ephemeral: true
             });
         }
@@ -1134,7 +1004,8 @@ client.on('interactionCreate', async interaction => {
             .setTitle('🗑️ Game Removed')
             .addFields(
                 { name: 'Name', value: game.customName || game.name, inline: true },
-                { name: 'ID', value: game.id, inline: true }
+                { name: 'ID', value: game.id, inline: true },
+                { name: 'Genre', value: `${GENRE_ICONS[game.genre] || '🎮'} ${game.genre}`, inline: true }
             )
             .setTimestamp();
 
@@ -1163,14 +1034,20 @@ client.on('interactionCreate', async interaction => {
         for (const [genre, genreGames] of Object.entries(gamesByGenre)) {
             const genreIcon = GENRE_ICONS[genre] || '🎮';
             
-            const gamesList = genreGames.map(game => {
-                const displayName = game.customName || game.name;
-                return `**${displayName}** (${game.id})`;
-            }).join('\n');
+            const gamesList = await Promise.all(
+                genreGames.map(async (game) => {
+                    const uptime = Date.now() - game.addedAt;
+                    const uptimeText = formatUptime(uptime);
+                    const stats = await getGameStats(game.id);
+                    const displayName = game.customName || game.name;
+                    
+                    return `**${displayName}** (ID: ${game.id})\n⏱️ ${uptimeText} | 👥 ${stats.playing}/${stats.maxPlayers}`;
+                })
+            );
 
             embed.addFields({
                 name: `${genreIcon} ${genre} (${genreGames.length})`,
-                value: gamesList,
+                value: gamesList.join('\n\n'),
                 inline: false
             });
         }
@@ -1199,24 +1076,30 @@ client.on('interactionCreate', async interaction => {
 // ═══════════════════════════════════════════════════════════
 
 app.get('/api/test', (req, res) => {
+    console.log('🧪 Test endpoint hit!');
     res.json({ 
         success: true,
-        message: 'API working!',
-        robloxStatus: robloxLoggedIn ? 'Logged In' : 'Not Logged In',
-        timestamp: Date.now()
+        message: 'API is working perfectly!',
+        timestamp: Date.now(),
+        botOnline: client.user ? true : false
     });
 });
 
 app.get('/api/games', async (req, res) => {
+    console.log('📥 Games endpoint hit!');
+    
     const gamesWithStats = await Promise.all(
         games.map(async (g) => {
             const stats = await getGameStats(g.id);
             return {
                 id: g.id,
                 name: g.customName || g.name,
+                originalName: g.name,
                 creator: g.creator,
                 genre: g.genre,
                 description: g.customDescription || null,
+                uptime: Date.now() - g.addedAt,
+                uptimeFormatted: formatUptime(Date.now() - g.addedAt),
                 playing: stats.playing,
                 maxPlayers: stats.maxPlayers,
                 addedBy: g.addedBy
@@ -1234,13 +1117,13 @@ app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'online', 
         gameCount: games.length,
-        robloxStatus: robloxLoggedIn ? 'logged_in' : 'not_logged_in'
+        botStatus: client.user ? 'connected' : 'disconnected'
     });
 });
 
 app.get('/', (req, res) => {
     res.json({ 
-        message: 'Retreat Gateway Bot - 773 Detection',
+        message: 'Retreat Gateway Bot API',
         endpoints: ['/api/games', '/api/health', '/api/test']
     });
 });
