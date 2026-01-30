@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, EmbedBuilder, ModalBuilder, TextInputBuilder,
 const express = require('express');
 const fs = require('fs');
 const noblox = require('noblox.js');
-const fetch = require('node-fetch');
+const axios = require('axios');
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds] 
@@ -110,8 +110,8 @@ async function getGameInfo(gameId) {
     try {
         console.log(`🔍 Fetching game info for ID: ${gameId}`);
         
-        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
-        const universeData = await universeResponse.json();
+        const universeResponse = await axios.get(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        const universeData = universeResponse.data;
         
         console.log('Universe data:', universeData);
         
@@ -121,8 +121,8 @@ async function getGameInfo(gameId) {
         }
         
         const universeId = universeData.universeId;
-        const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
-        const data = await response.json();
+        const response = await axios.get(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        const data = response.data;
         
         console.log('Game data:', data);
         
@@ -139,7 +139,7 @@ async function getGameInfo(gameId) {
             };
         }
     } catch (error) {
-        console.error('Error fetching game info:', error);
+        console.error('Error fetching game info:', error.message);
     }
     return null;
 }
@@ -148,8 +148,8 @@ async function getGameStats(gameId) {
     try {
         console.log(`📊 Fetching stats for game ID: ${gameId}`);
         
-        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
-        const universeData = await universeResponse.json();
+        const universeResponse = await axios.get(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        const universeData = universeResponse.data;
         
         if (!universeData.universeId) {
             console.log('❌ No universe ID for stats');
@@ -157,8 +157,8 @@ async function getGameStats(gameId) {
         }
         
         const universeId = universeData.universeId;
-        const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
-        const data = await response.json();
+        const response = await axios.get(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+        const data = response.data;
         
         if (data.data && data.data.length > 0) {
             const stats = {
@@ -169,7 +169,7 @@ async function getGameStats(gameId) {
             return stats;
         }
     } catch (error) {
-        console.error('Error fetching game stats:', error);
+        console.error('Error fetching game stats:', error.message);
     }
     return { playing: 0, maxPlayers: 0 };
 }
@@ -236,17 +236,21 @@ async function canBotAccessGame(gameId) {
 
 async function canAccessGameViaAPI(gameId) {
     try {
-        const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
+        const universeResponse = await axios.get(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`, {
+            validateStatus: function (status) {
+                return status < 500; // Don't throw on 4xx errors
+            }
+        });
         
         if (universeResponse.status === 400 || universeResponse.status === 404) {
             return false; // Game doesn't exist
         }
         
-        if (!universeResponse.ok) {
+        if (universeResponse.status !== 200) {
             return true; // Temporary error, keep game
         }
         
-        const universeData = await universeResponse.json();
+        const universeData = universeResponse.data;
         
         if (!universeData.universeId) {
             return false; // No universe = deleted game
