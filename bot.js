@@ -191,56 +191,58 @@ async function checkGameExists(gameId) {
     try {
         console.log(`🔍 Checking game ${gameId}...`);
         
+        // 1. Önce universe ID'yi al
         const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${gameId}/universe`);
         
         console.log(`📡 Universe API Response: ${universeResponse.status}`);
         
-        // SADECE 773 = teleport error (deleted game)
-        if (universeResponse.status === 773) {
-            console.log(`❌ Game ${gameId} is DELETED (773 - Teleport Error)`);
+        // 400 veya 404 = Oyun bulunamadı (773 teleport hatası vericek demektir)
+        if (universeResponse.status === 400 || universeResponse.status === 404) {
+            console.log(`❌ Game ${gameId} NOT FOUND - Would give 773 on teleport`);
             return false;
         }
         
-        // Diğer hatalar = oyunu koru
+        // Diğer hatalar = geçici sorun, oyunu koru
         if (!universeResponse.ok) {
-            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - KEEPING`);
+            console.log(`⚠️ Game ${gameId} - HTTP ${universeResponse.status} - KEEPING (temporary issue)`);
             return true;
         }
         
         const universeData = await universeResponse.json();
         
+        // Universe ID yoksa = Oyun silinmiş veya private (773 verir)
         if (!universeData.universeId) {
-            console.log(`⚠️ Game ${gameId} - No universeId - KEEPING (might be private)`);
-            return true;
+            console.log(`❌ Game ${gameId} - No universeId - Would give 773 on teleport`);
+            return false;
         }
         
+        // 2. Oyun bilgilerini al
         const universeId = universeData.universeId;
         const gameResponse = await fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
         
         console.log(`📡 Games API Response: ${gameResponse.status}`);
         
-        if (gameResponse.status === 773) {
-            console.log(`❌ Game ${gameId} data not found (773 - Teleport Error)`);
-            return false;
-        }
-        
         if (!gameResponse.ok) {
-            console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - KEEPING`);
+            console.log(`⚠️ Game ${gameId} - Games API ${gameResponse.status} - KEEPING (temporary issue)`);
             return true;
         }
         
         const data = await gameResponse.json();
         
+        // Data boşsa = Oyun yok (773 verir)
         if (!data.data || data.data.length === 0) {
-            console.log(`⚠️ Game ${gameId} - Empty data - KEEPING`);
-            return true;
+            console.log(`❌ Game ${gameId} - No game data - Would give 773 on teleport`);
+            return false;
         }
         
-        console.log(`✅ Game ${gameId} EXISTS`);
+        // Oyun var ve erişilebilir
+        console.log(`✅ Game ${gameId} EXISTS and accessible`);
         return true;
         
     } catch (error) {
         console.error(`❌ Error checking game ${gameId}:`, error.message);
+        
+        // Network hatası = Güvenli tarafta dur, oyunu koru
         console.log(`⚠️ Network error for ${gameId} - KEEPING game as safe`);
         return true;
     }
@@ -248,7 +250,7 @@ async function checkGameExists(gameId) {
 
 async function autoCleanupDeletedGames() {
     console.log('\n════════════════════════════════════════');
-    console.log('🧹 AUTO-CLEANUP STARTED (773 Error Check)');
+    console.log('🧹 AUTO-CLEANUP STARTED (Checking for 773 Teleport Errors)');
     console.log(`🕐 Time: ${new Date().toLocaleString()}`);
     console.log(`📊 Total games: ${games.length}`);
     console.log('════════════════════════════════════════\n');
@@ -267,7 +269,7 @@ async function autoCleanupDeletedGames() {
         const exists = await checkGameExists(game.id);
         
         if (!exists) {
-            console.log(`🗑️ MARKED FOR DELETION: ${game.name} (773 Error)`);
+            console.log(`🗑️ MARKED FOR DELETION: ${game.name} (Would give 773 error on teleport)`);
             deletedGames.push(game);
         } else {
             console.log(`✅ KEEPING: ${game.name}`);
@@ -297,13 +299,14 @@ async function autoCleanupDeletedGames() {
                 const embed = new EmbedBuilder()
                     .setColor(0xFF6B6B)
                     .setTitle('🗑️ Game Automatically Removed')
-                    .setDescription('One of your games was removed because it has a teleport error (773 - Game deleted/unavailable).')
+                    .setDescription('One of your games was removed because it would give **Error 773** when trying to teleport from the hub.\n\n**Reason:** Game deleted, unavailable, or no longer exists on Roblox.')
                     .addFields(
                         { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
                         { name: '🆔 Game ID', value: game.id, inline: true },
-                        { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true }
+                        { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true },
+                        { name: '⚠️ Error Type', value: 'Roblox Error 773 (Cannot Teleport)', inline: false }
                     )
-                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup (773 Error)' })
+                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup (773 Prevention)' })
                     .setTimestamp();
                 
                 await user.send({ embeds: [embed] });
@@ -324,9 +327,10 @@ client.once('ready', () => {
     loadGames();
     loadConfig();
     
-    console.log('\n⏰ Auto-cleanup schedule (773 Error Check):');
+    console.log('\n⏰ Auto-cleanup schedule (Prevent 773 Teleport Errors):');
     console.log('   📍 First run: in 30 seconds');
-    console.log('   🔁 Repeat: every 5 minutes\n');
+    console.log('   🔁 Repeat: every 5 minutes');
+    console.log('   🎯 Purpose: Remove games that would fail teleport\n');
     
     // İlk kontrol 30 saniye sonra
     setTimeout(() => {
@@ -548,8 +552,8 @@ client.on('interactionCreate', async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor(0xFFA500)
-            .setTitle('🔍 Checking All Games (773 Error)...')
-            .setDescription('Please wait while I verify all games...')
+            .setTitle('🔍 Checking All Games for 773 Errors...')
+            .setDescription('Checking which games would fail teleport with Error 773...')
             .setTimestamp();
 
         await interaction.editReply({ embeds: [embed] });
@@ -579,14 +583,14 @@ client.on('interactionCreate', async interaction => {
 
             const resultEmbed = new EmbedBuilder()
                 .setColor(0xFF0000)
-                .setTitle('🗑️ Deleted Games Found & Removed (773 Error)')
+                .setTitle('🗑️ Games Removed (Would Give Error 773)')
                 .setDescription(deletedList)
                 .addFields(
                     { name: 'Total Checked', value: `${games.length + deletedGames.length}`, inline: true },
                     { name: 'Valid Games', value: `${validGames.length}`, inline: true },
-                    { name: 'Deleted Games', value: `${deletedGames.length}`, inline: true }
+                    { name: 'Removed (773 Error)', value: `${deletedGames.length}`, inline: true }
                 )
-                .setFooter({ text: 'Games have been automatically removed from the hub' })
+                .setFooter({ text: 'These games would fail when trying to teleport from hub' })
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [resultEmbed] });
@@ -598,10 +602,11 @@ client.on('interactionCreate', async interaction => {
                     const notifEmbed = new EmbedBuilder()
                         .setColor(0xFF6B6B)
                         .setTitle('🗑️ Your Game Was Removed')
-                        .setDescription('One of your games was removed because it has a teleport error (773).')
+                        .setDescription('Your game was removed because it would give **Error 773** when trying to teleport.')
                         .addFields(
                             { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
-                            { name: '🆔 Game ID', value: game.id, inline: true }
+                            { name: '🆔 Game ID', value: game.id, inline: true },
+                            { name: '⚠️ Reason', value: 'Game deleted or unavailable on Roblox', inline: false }
                         )
                         .setTimestamp();
 
@@ -614,7 +619,7 @@ client.on('interactionCreate', async interaction => {
             const resultEmbed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle('✅ All Games Valid')
-                .setDescription('All games in the hub are still active on Roblox!')
+                .setDescription('All games in the hub can be teleported to without Error 773!')
                 .addFields(
                     { name: 'Total Games Checked', value: `${games.length}`, inline: true }
                 )
@@ -756,7 +761,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 {
                     name: '🎮 Game Commands',
-                    value: '`/addgame` - Add game (with genre)\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check deleted games (773)',
+                    value: '`/addgame` - Add game (with genre)\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check for 773 errors',
                     inline: false
                 },
                 {
@@ -773,9 +778,14 @@ client.on('interactionCreate', async interaction => {
                     name: '🎯 Genres',
                     value: '⚔️ Official | 🗡️ SwordFight | 🔫 Crim | 👋 Slap | 🐐 Goat',
                     inline: false
+                },
+                {
+                    name: '🧹 Auto-Cleanup',
+                    value: 'Every 5 minutes, bot checks all games.\nGames that would give **Error 773** on teleport are automatically removed.',
+                    inline: false
                 }
             )
-            .setFooter({ text: 'Retreat Gateway - Auto-cleanup every 5 minutes (773 Error)' })
+            .setFooter({ text: 'Retreat Gateway - Prevents 773 Teleport Errors' })
             .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
