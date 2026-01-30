@@ -1,13 +1,25 @@
 {
   "name": "retreat-gateway-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Discord bot for Roblox game hub with 773 error verification using real Roblox account",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "deploy": "node deploy-commands.js"
+    "start": "node bot.js"
   },
+  "keywords": [
+    "discord",
+    "bot",
+    "roblox",
+    "game-hub"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "discord.js": "^14.14.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "noblox.js": "^4.13.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }
