@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, EmbedBuilder, ModalBuilder, TextInputBuilder,
 const express = require('express');
 const fs = require('fs');
 const noblox = require('noblox.js');
+const fetch = require('node-fetch');
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds] 
@@ -251,222 +252,318 @@ async function canAccessGameViaAPI(gameId) {
             return false; // No universe = deleted game
         }
         
-        return true; // Game exists
-        
+        return true;
     } catch (error) {
-        return true; // Error = keep game to be safe
+        console.log(`⚠️ API check error for ${gameId}: ${error.message}`);
+        return true; // Keep game on errors
     }
 }
 
-// ═══════════════════════════════════════════════════════════
-// ⏰ AUTOMATIC GAME VERIFICATION - EVERY 10 MINUTES
-// ═══════════════════════════════════════════════════════════
-async function autoCheckGames() {
-    console.log('\n════════════════════════════════════════');
-    console.log('🤖 AUTO-CHECK STARTED (Bot Roblox Account)');
-    console.log(`🕐 Time: ${new Date().toLocaleString()}`);
-    console.log(`📊 Total games to check: ${games.length}`);
-    console.log('════════════════════════════════════════\n');
+// Verify games every 30 minutes
+setInterval(async () => {
+    console.log('🔍 Starting automatic game verification...');
     
     if (games.length === 0) {
-        console.log('✅ No games to check!\n');
+        console.log('No games to verify');
         return;
     }
     
-    const deletedGames = [];
+    let removed = 0;
+    const initialCount = games.length;
     
-    for (let i = 0; i < games.length; i++) {
+    for (let i = games.length - 1; i >= 0; i--) {
         const game = games[i];
-        console.log(`\n[${i + 1}/${games.length}] Checking: ${game.name} (${game.id})`);
         
         const canAccess = await canBotAccessGame(game.id);
         
         if (!canAccess) {
-            console.log(`🗑️ MARKED FOR DELETION: ${game.name}`);
-            deletedGames.push(game);
-        } else {
-            console.log(`✅ KEEPING: ${game.name}`);
+            console.log(`🗑️ Removing inaccessible game: ${game.name} (${game.id})`);
+            games.splice(i, 1);
+            removed++;
         }
         
-        // Rate limiting - wait 1 second between checks
+        // Delay between checks to avoid rate limits
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    console.log('\n════════════════════════════════════════');
-    console.log('📈 AUTO-CHECK SUMMARY:');
-    console.log(`✅ Kept: ${games.length - deletedGames.length}`);
-    console.log(`❌ Deleted: ${deletedGames.length}`);
-    console.log('════════════════════════════════════════\n');
-    
-    if (deletedGames.length > 0) {
-        // Remove deleted games
-        games = games.filter(g => !deletedGames.find(d => d.id === g.id));
+    if (removed > 0) {
         saveGames();
-        
-        console.log(`✅ Removed ${deletedGames.length} game(s) from database`);
-        
-        // Send notifications to game owners
-        for (const game of deletedGames) {
-            try {
-                console.log(`📧 Sending notification to ${game.addedBy}...`);
-                const user = await client.users.fetch(game.addedByUserId);
-                
-                const embed = new EmbedBuilder()
-                    .setColor(0xFF6B6B)
-                    .setTitle('🗑️ Game Auto-Removed (Inaccessible)')
-                    .setDescription(`Your game was automatically removed because the bot cannot access it.`)
-                    .addFields(
-                        { name: '🎮 Game', value: game.customName || game.name, inline: true },
-                        { name: '🆔 ID', value: game.id, inline: true },
-                        { name: '📂 Genre', value: `${GENRE_ICONS[game.genre] || '🎮'} ${game.genre}`, inline: true },
-                        { name: '❌ Reason', value: 'Game is deleted, banned, or bot account lacks access', inline: false },
-                        { name: '💡 Note', value: 'If this is a private game, make sure the bot account is in your group with proper permissions.', inline: false }
-                    )
-                    .setFooter({ text: 'Auto-check system runs every 10 minutes' })
-                    .setTimestamp();
-                
-                await user.send({ embeds: [embed] });
-                console.log(`✅ Notification sent to ${game.addedBy}`);
-            } catch (error) {
-                console.error(`❌ Could not send DM to ${game.addedBy}:`, error.message);
-            }
-        }
+        console.log(`✅ Verification complete: Removed ${removed}/${initialCount} inaccessible games`);
+    } else {
+        console.log(`✅ Verification complete: All ${initialCount} games are accessible`);
     }
     
-    console.log('\n🤖 AUTO-CHECK FINISHED\n');
-}
+}, 30 * 60 * 1000); // Every 30 minutes
+
+// ═══════════════════════════════════════════════════════════
+// 🚨 773 ERROR REPORTING SYSTEM
+// ═══════════════════════════════════════════════════════════
 
 async function handle773Report(playerName, playerUserId, gameId, errorCode) {
-    // This function is deprecated - auto-check system handles everything now
-    console.log(`⚠️ Manual report received from ${playerName} for game ${gameId}`);
-    console.log(`   Auto-check system will verify this game automatically`);
+    console.log(`🚨 Processing 773 error for ${playerName} (${playerUserId}) in game ${gameId}`);
+    
+    // Find the game
+    const game = games.find(g => g.id === gameId);
+    
+    if (!game) {
+        console.log(`❌ Game ${gameId} not in hub`);
+        return {
+            success: false,
+            error: 'Game not found in hub'
+        };
+    }
+    
+    // Verify if bot can access the game
+    const canAccess = await canBotAccessGame(gameId);
+    
+    if (!canAccess) {
+        console.log(`🗑️ Game ${gameId} is inaccessible - removing from hub`);
+        
+        // Remove game from hub
+        const gameIndex = games.findIndex(g => g.id === gameId);
+        if (gameIndex !== -1) {
+            games.splice(gameIndex, 1);
+            saveGames();
+        }
+        
+        // Notify leader
+        try {
+            const user = await client.users.fetch(config.leaderUserId);
+            
+            const embed = new EmbedBuilder()
+                .setColor(0xFF0000)
+                .setTitle('🚨 773 Error - Game Removed')
+                .setDescription(`A player reported error 773, and I verified the game is no longer accessible.`)
+                .addFields(
+                    { name: '🎮 Game', value: `${game.customName || game.name}\nID: ${game.id}`, inline: false },
+                    { name: '👤 Reporter', value: playerUserId ? `${playerName} (${playerUserId})` : playerName, inline: false },
+                    { name: '❌ Error Code', value: errorCode.toString(), inline: true },
+                    { name: '🗑️ Action', value: 'Game removed from hub', inline: true }
+                )
+                .setTimestamp();
+            
+            await user.send({ embeds: [embed] });
+            console.log('✅ Leader notified about removed game');
+            
+        } catch (error) {
+            console.error('❌ Failed to notify leader:', error);
+        }
+        
+        return {
+            success: true,
+            verified: true,
+            gameRemoved: true,
+            message: 'Game verified as inaccessible and removed from hub'
+        };
+    }
+    
+    // Game is still accessible, might be temporary issue
+    console.log(`✅ Game ${gameId} is still accessible - possible temporary issue`);
+    
+    // Still notify leader about the report
+    try {
+        const user = await client.users.fetch(config.leaderUserId);
+        
+        const embed = new EmbedBuilder()
+            .setColor(0xFFA500)
+            .setTitle('⚠️ 773 Error Report (Game Still Accessible)')
+            .setDescription(`A player reported error 773, but the game is still accessible to me. This might be a temporary issue.`)
+            .addFields(
+                { name: '🎮 Game', value: `${game.customName || game.name}\nID: ${game.id}`, inline: false },
+                { name: '👤 Reporter', value: playerUserId ? `${playerName} (${playerUserId})` : playerName, inline: false },
+                { name: '❌ Error Code', value: errorCode.toString(), inline: true },
+                { name: '✅ Status', value: 'Game still in hub', inline: true }
+            )
+            .setFooter({ text: 'I will continue monitoring this game' })
+            .setTimestamp();
+        
+        await user.send({ embeds: [embed] });
+        console.log('✅ Leader notified about error report');
+        
+    } catch (error) {
+        console.error('❌ Failed to notify leader:', error);
+    }
+    
     return {
-        success: false,
-        reason: 'Manual reports disabled - auto-check system runs every 10 minutes'
+        success: true,
+        verified: false,
+        gameRemoved: false,
+        message: 'Game is still accessible, might be temporary issue'
     };
 }
 
-async function autoCleanupDeletedGames() {
-    console.log('\n════════════════════════════════════════');
-    console.log('🧹 AUTO-CLEANUP STARTED (Checking for 773 Teleport Errors)');
-    console.log(`🕐 Time: ${new Date().toLocaleString()}`);
-    console.log(`📊 Total games: ${games.length}`);
-    console.log('════════════════════════════════════════\n');
-    
-    if (games.length === 0) {
-        console.log('✅ No games to check!\n');
-        return;
-    }
-    
-    const deletedGames = [];
-    
-    for (let i = 0; i < games.length; i++) {
-        const game = games[i];
-        console.log(`\n[${i + 1}/${games.length}] Checking: ${game.name} (${game.id})`);
-        
-        const exists = await checkGameExists(game.id);
-        
-        if (!exists) {
-            console.log(`🗑️ MARKED FOR DELETION: ${game.name} (Would give 773 error on teleport)`);
-            deletedGames.push(game);
-        } else {
-            console.log(`✅ KEEPING: ${game.name}`);
-        }
-        
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    console.log('\n════════════════════════════════════════');
-    console.log('📈 CLEANUP SUMMARY:');
-    console.log(`✅ Kept: ${games.length - deletedGames.length}`);
-    console.log(`❌ Deleted: ${deletedGames.length}`);
-    console.log('════════════════════════════════════════\n');
-    
-    if (deletedGames.length > 0) {
-        games = games.filter(g => !deletedGames.find(d => d.id === g.id));
-        saveGames();
-        
-        console.log(`✅ Removed ${deletedGames.length} game(s) from database`);
-        
-        for (const game of deletedGames) {
-            try {
-                console.log(`📧 Sending notification to ${game.addedBy}...`);
-                const user = await client.users.fetch(game.addedByUserId);
-                
-                const embed = new EmbedBuilder()
-                    .setColor(0xFF6B6B)
-                    .setTitle('🗑️ Game Automatically Removed')
-                    .setDescription('One of your games was removed because it would give **Error 773** when trying to teleport from the hub.\n\n**Reason:** Game deleted, unavailable, or no longer exists on Roblox.')
-                    .addFields(
-                        { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
-                        { name: '🆔 Game ID', value: game.id, inline: true },
-                        { name: '📅 Added On', value: new Date(game.addedAt).toLocaleDateString(), inline: true },
-                        { name: '⚠️ Error Type', value: 'Roblox Error 773 (Cannot Teleport)', inline: false }
-                    )
-                    .setFooter({ text: 'Retreat Gateway - Auto Cleanup (773 Prevention)' })
-                    .setTimestamp();
-                
-                await user.send({ embeds: [embed] });
-                console.log(`✅ Notified ${game.addedBy}`);
-            } catch (error) {
-                console.error(`❌ Failed to notify ${game.addedBy}:`, error.message);
-            }
-        }
-    } else {
-        console.log('✅ No deleted games found. All games are valid!');
-    }
-    
-    console.log('\n🧹 AUTO-CLEANUP FINISHED\n');
-}
+// ═══════════════════════════════════════════════════════════
+// 🤖 BOT INITIALIZATION
+// ═══════════════════════════════════════════════════════════
 
-client.once('ready', () => {
-    console.log(`✅ Bot is online as ${client.user.tag}`);
+client.once('ready', async () => {
+    console.log(`✅ Bot logged in as ${client.user.tag}`);
+    
     loadGames();
     loadConfig();
     
-    // Login to Roblox account if cookie is provided
     if (ROBLOX_COOKIE) {
-        console.log('\n🤖 Logging into Roblox account...');
-        noblox.setCookie(ROBLOX_COOKIE)
-            .then(currentUser => {
-                console.log(`✅ Logged in as: ${currentUser.UserName} (${currentUser.UserID})`);
-                console.log(`   This account will be used to verify game accessibility`);
-                console.log(`   Make sure this account is in your group with test permissions!\n`);
-            })
-            .catch(err => {
-                console.error('❌ Failed to login to Roblox:', err.message);
-                console.log('⚠️ Bot will use API-only verification (less accurate)\n');
-            });
+        try {
+            await noblox.setCookie(ROBLOX_COOKIE);
+            const currentUser = await noblox.getCurrentUser();
+            console.log(`✅ Roblox account authenticated: ${currentUser.UserName} (${currentUser.UserID})`);
+        } catch (error) {
+            console.error('❌ Failed to authenticate Roblox account:', error.message);
+            console.log('⚠️ Bot will use API fallback for game verification');
+        }
     } else {
-        console.log('\n⚠️ No ROBLOSECURITY cookie provided');
-        console.log('   Bot will use API-only verification');
-        console.log('   Set ROBLOSECURITY environment variable for better accuracy\n');
+        console.log('⚠️ No ROBLOSECURITY cookie - using API fallback');
     }
     
-    console.log('⏰ Auto-check schedule:');
-    console.log('   📍 First check: in 30 seconds');
-    console.log('   🔁 Repeat: every 10 minutes');
-    console.log('   🎯 Purpose: Remove inaccessible games automatically\n');
-    
-    // First check after 30 seconds
-    setTimeout(() => {
-        console.log('🚀 Running first auto-check...\n');
-        autoCheckGames();
-    }, 30000);
-    
-    // Then every 10 minutes
-    setInterval(() => {
-        console.log('🚀 Running scheduled auto-check...\n');
-        autoCheckGames();
-    }, 10 * 60 * 1000); // 10 minutes
+    const commands = [
+        {
+            name: 'addgame',
+            description: 'Add a new game to the hub',
+            options: [
+                {
+                    name: 'gameid',
+                    type: 3, // STRING
+                    description: 'Roblox game ID or URL',
+                    required: true
+                },
+                {
+                    name: 'genre',
+                    type: 3,
+                    description: 'Game genre',
+                    required: true,
+                    choices: [
+                        { name: '⚔️ Official', value: 'Official' },
+                        { name: '🗡️ SwordFight', value: 'SwordFight' },
+                        { name: '🔫 Crim', value: 'Crim' },
+                        { name: '👋 Slap', value: 'Slap' },
+                        { name: '🐐 Goat', value: 'Goat' }
+                    ]
+                }
+            ]
+        },
+        {
+            name: 'removegame',
+            description: 'Remove a game from the hub',
+            options: [
+                {
+                    name: 'gameid',
+                    type: 3,
+                    description: 'Game ID to remove',
+                    required: true
+                }
+            ]
+        },
+        {
+            name: 'listgames',
+            description: 'List all games in the hub'
+        },
+        {
+            name: 'cleargames',
+            description: '🔴 Remove ALL games (Admin only)'
+        },
+        {
+            name: 'setpermissions',
+            description: 'Configure bot permissions (Admin only)',
+            options: [
+                {
+                    name: 'mode',
+                    type: 3,
+                    description: 'Who can use the bot',
+                    required: true,
+                    choices: [
+                        { name: 'Everyone', value: 'everyone' },
+                        { name: 'Specific roles only', value: 'roles' }
+                    ]
+                }
+            ]
+        },
+        {
+            name: 'addrole',
+            description: 'Add a role that can use the bot (Admin only)',
+            options: [
+                {
+                    name: 'role',
+                    type: 8, // ROLE
+                    description: 'Role to add',
+                    required: true
+                }
+            ]
+        },
+        {
+            name: 'removerole',
+            description: 'Remove an allowed role (Admin only)',
+            options: [
+                {
+                    name: 'role',
+                    type: 8,
+                    description: 'Role to remove',
+                    required: true
+                }
+            ]
+        },
+        {
+            name: 'listroles',
+            description: 'Show all allowed roles'
+        },
+        {
+            name: 'setchannel',
+            description: 'Set the channel where bot can be used (Admin only)',
+            options: [
+                {
+                    name: 'channel',
+                    type: 7, // CHANNEL
+                    description: 'Channel to set (leave empty to allow all channels)',
+                    required: false
+                }
+            ]
+        },
+        {
+            name: 'addadmin',
+            description: 'Add a bot administrator (Server Owner only)',
+            options: [
+                {
+                    name: 'user',
+                    type: 6, // USER
+                    description: 'User to make admin',
+                    required: true
+                }
+            ]
+        },
+        {
+            name: 'removeadmin',
+            description: 'Remove a bot administrator (Server Owner only)',
+            options: [
+                {
+                    name: 'user',
+                    type: 6,
+                    description: 'User to remove from admins',
+                    required: true
+                }
+            ]
+        },
+        {
+            name: 'listadmins',
+            description: 'List all bot administrators'
+        },
+        {
+            name: 'botstatus',
+            description: 'Show bot configuration and status'
+        }
+    ];
+
+    try {
+        await client.application.commands.set(commands);
+        console.log('✅ Commands registered successfully');
+    } catch (error) {
+        console.error('❌ Failed to register commands:', error);
+    }
 });
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
-        if (interaction.customId.startsWith('customize_')) {
-            const gameId = interaction.customId.split('_')[1];
-            
+        const [action, gameId] = interaction.customId.split('_');
+
+        if (action === 'customize') {
             const game = games.find(g => g.id === gameId);
             
             if (!game) {
@@ -475,47 +572,49 @@ client.on('interactionCreate', async interaction => {
                     ephemeral: true
                 });
             }
-            
+
             if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
-                    content: '❌ You can only customize your own games!',
+                    content: '❌ Only the person who added this game can customize it!',
                     ephemeral: true
                 });
             }
-            
+
             const modal = new ModalBuilder()
-                .setCustomId(`customizeModal_${gameId}`)
-                .setTitle('✨ Customize Your Game');
-            
+                .setCustomId(`modal_customize_${gameId}`)
+                .setTitle('✨ Customize Game');
+
             const nameInput = new TextInputBuilder()
                 .setCustomId('customName')
-                .setLabel('Custom Name (Optional)')
+                .setLabel('Custom Name (leave empty to use original)')
                 .setStyle(TextInputStyle.Short)
-                .setPlaceholder('Enter a custom name for your game...')
-                .setMaxLength(50)
                 .setRequired(false)
-                .setValue(game.customName || '');
-            
+                .setMaxLength(100);
+
+            if (game.customName) {
+                nameInput.setValue(game.customName);
+            }
+
             const descInput = new TextInputBuilder()
                 .setCustomId('customDescription')
-                .setLabel('Custom Description (Optional)')
+                .setLabel('Custom Description (optional)')
                 .setStyle(TextInputStyle.Paragraph)
-                .setPlaceholder('Enter a custom description...')
-                .setMaxLength(200)
                 .setRequired(false)
-                .setValue(game.customDescription || '');
-            
-            const nameRow = new ActionRowBuilder().addComponents(nameInput);
-            const descRow = new ActionRowBuilder().addComponents(descInput);
-            
-            modal.addComponents(nameRow, descRow);
-            
+                .setMaxLength(500);
+
+            if (game.customDescription) {
+                descInput.setValue(game.customDescription);
+            }
+
+            const row1 = new ActionRowBuilder().addComponents(nameInput);
+            const row2 = new ActionRowBuilder().addComponents(descInput);
+
+            modal.addComponents(row1, row2);
+
             await interaction.showModal(modal);
         }
-        
-        if (interaction.customId.startsWith('sendlink_')) {
-            const gameId = interaction.customId.split('_')[1];
-            
+
+        else if (action === 'sendlink') {
             const game = games.find(g => g.id === gameId);
             
             if (!game) {
@@ -524,520 +623,326 @@ client.on('interactionCreate', async interaction => {
                     ephemeral: true
                 });
             }
-            
+
             if (game.addedByUserId !== interaction.user.id) {
                 return interaction.reply({
-                    content: '❌ You can only send links for your own games!',
+                    content: '❌ Only the person who added this game can send the link!',
                     ephemeral: true
                 });
             }
-            
-            await interaction.deferReply({ ephemeral: true });
-            
+
             try {
-                const leader = await client.users.fetch(config.leaderUserId);
-                const gameLink = `https://www.roblox.com/games/${gameId}`;
+                const user = await client.users.fetch(config.leaderUserId);
                 
-                const stats = await getGameStats(gameId);
-                
-                const genreIcon = GENRE_ICONS[game.genre] || '🎮';
-                
-                const dmEmbed = new EmbedBuilder()
-                    .setColor(0x00FF00)
-                    .setTitle('🎮 New Game Link from Hub!')
+                const embed = new EmbedBuilder()
+                    .setColor(0x0099FF)
+                    .setTitle('🔗 New Game Link')
                     .addFields(
-                        { name: '🎮 Game Name', value: game.customName || game.name, inline: false },
-                        { name: `${genreIcon} Genre`, value: game.genre, inline: true },
-                        { name: '🆔 Game ID', value: gameId, inline: true },
-                        { name: '👤 Sent By', value: interaction.user.tag, inline: true },
-                        { name: '👥 Players', value: `${stats.playing}/${stats.maxPlayers}`, inline: true },
-                        { name: '🔗 Game Link', value: gameLink, inline: false }
-                    )
-                    .setFooter({ text: 'Retreat Gateway - Game Link Request' })
-                    .setTimestamp();
-                
+                        { name: '🎮 Game', value: game.customName || game.name, inline: true },
+                        { name: '🆔 ID', value: game.id, inline: true },
+                        { name: `${GENRE_ICONS[game.genre]} Genre`, value: game.genre, inline: true },
+                        { name: '👤 Added by', value: game.addedBy, inline: true },
+                        { name: '🔗 Link', value: `https://www.roblox.com/games/${game.id}`, inline: false }
+                    );
+
                 if (game.customDescription) {
-                    dmEmbed.addFields({ name: '📄 Description', value: game.customDescription, inline: false });
+                    embed.addFields({ name: '📝 Description', value: game.customDescription, inline: false });
                 }
+
+                embed.setTimestamp();
+
+                await user.send({ embeds: [embed] });
                 
-                await leader.send({ embeds: [dmEmbed] });
-                
-                await interaction.editReply({
-                    content: `✅ Game link sent to <@${config.leaderUserId}> successfully!`
+                await interaction.reply({
+                    content: '✅ Link sent to profound!',
+                    ephemeral: true
                 });
+
             } catch (error) {
-                console.error('Failed to send DM to leader:', error);
-                await interaction.editReply({
-                    content: '❌ Failed to send link! The leader might have DMs disabled or the user was not found.',
+                console.error('Error sending link:', error);
+                await interaction.reply({
+                    content: '❌ Failed to send link!',
+                    ephemeral: true
                 });
             }
         }
     }
-    
+
     if (interaction.isModalSubmit()) {
-        if (interaction.customId.startsWith('customizeModal_')) {
-            const gameId = interaction.customId.split('_')[1];
-            const customName = interaction.fields.getTextInputValue('customName');
-            const customDescription = interaction.fields.getTextInputValue('customDescription');
-            
+        if (interaction.customId.startsWith('modal_customize_')) {
+            const gameId = interaction.customId.replace('modal_customize_', '');
             const game = games.find(g => g.id === gameId);
-            
+
             if (!game) {
                 return interaction.reply({
                     content: '❌ Game not found!',
                     ephemeral: true
                 });
             }
-            
-            const oldName = game.customName || game.name;
-            const oldDesc = game.customDescription || 'No description';
-            
-            if (customName.trim()) {
-                game.customName = customName.trim();
-            }
-            if (customDescription.trim()) {
-                game.customDescription = customDescription.trim();
-            }
-            
+
+            const customName = interaction.fields.getTextInputValue('customName').trim();
+            const customDescription = interaction.fields.getTextInputValue('customDescription').trim();
+
+            game.customName = customName || null;
+            game.customDescription = customDescription || null;
+
             saveGames();
-            
+
             const embed = new EmbedBuilder()
-                .setColor(0x00D9FF)
-                .setTitle('✨ Game Customized Successfully!')
+                .setColor(0x00FF00)
+                .setTitle('✅ Game Customized!')
                 .addFields(
-                    { name: '🎮 Game ID', value: gameId, inline: true },
-                    { name: '👤 Customized by', value: interaction.user.tag, inline: true },
-                    { name: '\u200B', value: '\u200B', inline: false }
+                    { name: '🎮 Original Name', value: game.name, inline: true },
+                    { name: '✨ Custom Name', value: game.customName || 'Not set', inline: true },
+                    { name: '📝 Description', value: game.customDescription || 'Not set', inline: false }
                 )
-                .setFooter({ text: 'Changes are now live in your Roblox hub!' })
                 .setTimestamp();
-            
-            if (customName.trim()) {
-                embed.addFields(
-                    { name: '📝 Name Updated', value: `~~${oldName}~~ → **${game.customName}**`, inline: false }
-                );
-            }
-            
-            if (customDescription.trim()) {
-                embed.addFields(
-                    { name: '📄 Description Updated', value: `~~${oldDesc}~~ → **${game.customDescription}**`, inline: false }
-                );
-            }
-            
-            if (!customName.trim() && !customDescription.trim()) {
-                embed.setDescription('⚠️ No changes made. Both fields were empty.');
-                embed.setColor(0xFFAA00);
-            }
-            
+
             await interaction.reply({ embeds: [embed], ephemeral: true });
         }
     }
-    
+
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName } = interaction;
+    const commandName = interaction.commandName;
 
-    const channelRestrictedCommands = ['addgame', 'removegame', 'listgames', 'cleargames', 'help', 'stats', 'customizegame', 'checkgames'];
-    if (channelRestrictedCommands.includes(commandName)) {
+    // Check channel permissions (except for admin commands)
+    if (!['setpermissions', 'addrole', 'removerole', 'listroles', 'setchannel', 'addadmin', 'removeadmin', 'listadmins', 'botstatus'].includes(commandName)) {
         if (config.allowedChannel && interaction.channelId !== config.allowedChannel) {
-            const channel = interaction.guild.channels.cache.get(config.allowedChannel);
             return interaction.reply({
-                content: `❌ You can only use this command in ${channel}!`,
+                content: `❌ This command can only be used in <#${config.allowedChannel}>`,
+                ephemeral: true
+            });
+        }
+
+        if (!hasPermission(interaction.member)) {
+            return interaction.reply({
+                content: '❌ You do not have permission to use this command!',
                 ephemeral: true
             });
         }
     }
 
-    const gameManagementCommands = ['addgame', 'cleargames'];
-    if (gameManagementCommands.includes(commandName) && !hasPermission(interaction.member)) {
-        return interaction.reply({
-            content: '❌ You don\'t have permission!\n💡 Ask admin to add your role: `/setroles action:add role:@YourRole`',
+    // ═══════════════════════════════════════════════════════════
+    // 🛠️ ADMIN COMMANDS
+    // ═══════════════════════════════════════════════════════════
+
+    if (commandName === 'setpermissions') {
+        if (!isBotAdmin(interaction.member)) {
+            return interaction.reply({
+                content: '❌ Only bot administrators can use this command!',
+                ephemeral: true
+            });
+        }
+
+        const mode = interaction.options.getString('mode');
+        config.allowEveryone = (mode === 'everyone');
+        saveConfig();
+
+        await interaction.reply({
+            content: mode === 'everyone' 
+                ? '✅ Everyone can now use the bot!' 
+                : '✅ Only users with allowed roles can use the bot!',
             ephemeral: true
         });
     }
-    
-    const adminCommands = ['setroles', 'setchannel', 'setadmin', 'checkgames'];
-    if (adminCommands.includes(commandName) && !isBotAdmin(interaction.member)) {
-        return interaction.reply({
-            content: '❌ Only bot admins can use this command!',
+
+    else if (commandName === 'addrole') {
+        if (!isBotAdmin(interaction.member)) {
+            return interaction.reply({
+                content: '❌ Only bot administrators can use this command!',
+                ephemeral: true
+            });
+        }
+
+        const role = interaction.options.getRole('role');
+
+        if (config.allowedRoles.includes(role.id)) {
+            return interaction.reply({
+                content: '❌ This role is already allowed!',
+                ephemeral: true
+            });
+        }
+
+        config.allowedRoles.push(role.id);
+        saveConfig();
+
+        await interaction.reply({
+            content: `✅ Added role: ${role.name}`,
             ephemeral: true
         });
     }
 
-    if (commandName === 'checkgames') {
-        await interaction.deferReply();
-
-        const embed = new EmbedBuilder()
-            .setColor(0xFFA500)
-            .setTitle('🔍 Checking All Games for 773 Errors...')
-            .setDescription('Checking which games would fail teleport with Error 773...')
-            .setTimestamp();
-
-        await interaction.editReply({ embeds: [embed] });
-
-        const deletedGames = [];
-        const validGames = [];
-
-        for (const game of games) {
-            const exists = await checkGameExists(game.id);
-
-            if (!exists) {
-                deletedGames.push(game);
-            } else {
-                validGames.push(game);
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-
-        if (deletedGames.length > 0) {
-            games = validGames;
-            saveGames();
-
-            const deletedList = deletedGames
-                .map(g => `• **${g.customName || g.name}** (ID: ${g.id}) - Added by ${g.addedBy}`)
-                .join('\n');
-
-            const resultEmbed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('🗑️ Games Removed (Would Give Error 773)')
-                .setDescription(deletedList)
-                .addFields(
-                    { name: 'Total Checked', value: `${games.length + deletedGames.length}`, inline: true },
-                    { name: 'Valid Games', value: `${validGames.length}`, inline: true },
-                    { name: 'Removed (773 Error)', value: `${deletedGames.length}`, inline: true }
-                )
-                .setFooter({ text: 'These games would fail when trying to teleport from hub' })
-                .setTimestamp();
-
-            await interaction.editReply({ embeds: [resultEmbed] });
-
-            for (const game of deletedGames) {
-                try {
-                    const user = await client.users.fetch(game.addedByUserId);
-
-                    const notifEmbed = new EmbedBuilder()
-                        .setColor(0xFF6B6B)
-                        .setTitle('🗑️ Your Game Was Removed')
-                        .setDescription('Your game was removed because it would give **Error 773** when trying to teleport.')
-                        .addFields(
-                            { name: '🎮 Game Name', value: game.customName || game.name, inline: true },
-                            { name: '🆔 Game ID', value: game.id, inline: true },
-                            { name: '⚠️ Reason', value: 'Game deleted or unavailable on Roblox', inline: false }
-                        )
-                        .setTimestamp();
-
-                    await user.send({ embeds: [notifEmbed] });
-                } catch (error) {
-                    console.error(`Could not notify user:`, error.message);
-                }
-            }
-        } else {
-            const resultEmbed = new EmbedBuilder()
-                .setColor(0x00FF00)
-                .setTitle('✅ All Games Valid')
-                .setDescription('All games in the hub can be teleported to without Error 773!')
-                .addFields(
-                    { name: 'Total Games Checked', value: `${games.length}`, inline: true }
-                )
-                .setTimestamp();
-
-            await interaction.editReply({ embeds: [resultEmbed] });
-        }
-    }
-
-    if (commandName === 'customizegame') {
-        const gameId = interaction.options.getString('gameid');
-        const customName = interaction.options.getString('name');
-        const customDesc = interaction.options.getString('description');
-
-        const game = games.find(g => g.id === gameId);
-
-        if (!game) {
+    else if (commandName === 'removerole') {
+        if (!isBotAdmin(interaction.member)) {
             return interaction.reply({
-                content: '❌ Game not found in the hub!',
+                content: '❌ Only bot administrators can use this command!',
                 ephemeral: true
             });
         }
 
-        if (game.addedByUserId !== interaction.user.id) {
+        const role = interaction.options.getRole('role');
+        const index = config.allowedRoles.indexOf(role.id);
+
+        if (index === -1) {
             return interaction.reply({
-                content: `❌ You can only customize your own games!\nThis game was added by **${game.addedBy}**`,
+                content: '❌ This role is not in the allowed list!',
                 ephemeral: true
             });
         }
 
-        const oldName = game.customName || game.name;
-        const oldDesc = game.customDescription || 'No description';
+        config.allowedRoles.splice(index, 1);
+        saveConfig();
 
-        if (customName) {
-            game.customName = customName;
-        }
-        if (customDesc) {
-            game.customDescription = customDesc;
-        }
-
-        saveGames();
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00D9FF)
-            .setTitle('✨ Game Customized')
-            .addFields(
-                { name: '🎮 Game ID', value: gameId, inline: true },
-                { name: '👤 Customized by', value: interaction.user.tag, inline: true },
-                { name: '\u200B', value: '\u200B', inline: false },
-                { name: '📝 Old Name', value: oldName, inline: true },
-                { name: '📝 New Name', value: game.customName || oldName, inline: true },
-                { name: '\u200B', value: '\u200B', inline: false },
-                { name: '📄 Old Description', value: oldDesc, inline: false },
-                { name: '📄 New Description', value: game.customDescription || oldDesc, inline: false }
-            )
-            .setFooter({ text: 'Changes will appear in Roblox hub' })
-            .setTimestamp();
-
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({
+            content: `✅ Removed role: ${role.name}`,
+            ephemeral: true
+        });
     }
 
-    if (commandName === 'setadmin') {
-        const action = interaction.options.getString('action');
-        
-        if (action === 'add') {
-            const user = interaction.options.getUser('user');
-            
-            if (config.botAdmins.includes(user.id)) {
-                return interaction.reply({
-                    content: `❌ ${user.tag} is already a bot admin!`,
-                    ephemeral: true
-                });
-            }
-            
-            config.botAdmins.push(user.id);
-            saveConfig();
-            
-            return interaction.reply(`✅ Added ${user.tag} as bot admin!`);
+    else if (commandName === 'listroles') {
+        if (config.allowedRoles.length === 0) {
+            return interaction.reply({
+                content: '📋 No roles configured yet!',
+                ephemeral: true
+            });
         }
+
+        const roles = config.allowedRoles.map(id => `<@&${id}>`).join('\n');
         
-        else if (action === 'remove') {
-            const user = interaction.options.getUser('user');
-            
-            const index = config.botAdmins.indexOf(user.id);
-            if (index === -1) {
-                return interaction.reply({
-                    content: `❌ ${user.tag} is not a bot admin!`,
-                    ephemeral: true
-                });
-            }
-            
-            config.botAdmins.splice(index, 1);
-            saveConfig();
-            
-            return interaction.reply(`✅ Removed ${user.tag} from bot admins!`);
-        }
-        
-        else if (action === 'list') {
-            if (config.botAdmins.length === 0) {
-                return interaction.reply('📋 No bot admins set! Only server owner has full access.');
-            }
-            
-            const adminsList = config.botAdmins
-                .map(userId => {
-                    const user = interaction.guild.members.cache.get(userId);
-                    return user ? `• ${user.user.tag}` : `• Unknown User`;
-                })
-                .join('\n');
-            
-            const embed = new EmbedBuilder()
-                .setColor(0xFF5555)
-                .setTitle('👑 Bot Admins')
-                .setDescription(adminsList)
-                .setFooter({ text: 'Server owner always has full access' })
-                .setTimestamp();
-            
-            return interaction.reply({ embeds: [embed] });
-        }
+        await interaction.reply({
+            content: `📋 **Allowed Roles:**\n${roles}`,
+            ephemeral: true
+        });
     }
 
-    if (commandName === 'setchannel') {
+    else if (commandName === 'setchannel') {
+        if (!isBotAdmin(interaction.member)) {
+            return interaction.reply({
+                content: '❌ Only bot administrators can use this command!',
+                ephemeral: true
+            });
+        }
+
         const channel = interaction.options.getChannel('channel');
-        
-        if (channel) {
-            config.allowedChannel = channel.id;
-            saveConfig();
-            return interaction.reply(`✅ Bot will now only work in ${channel}!`);
-        } else {
+
+        if (!channel) {
             config.allowedChannel = null;
             saveConfig();
-            return interaction.reply('✅ Channel restriction removed! Bot can work in all channels.');
+            return interaction.reply({
+                content: '✅ Bot can now be used in any channel!',
+                ephemeral: true
+            });
         }
+
+        config.allowedChannel = channel.id;
+        saveConfig();
+
+        await interaction.reply({
+            content: `✅ Bot can now only be used in ${channel}`,
+            ephemeral: true
+        });
     }
 
-    if (commandName === 'help') {
+    else if (commandName === 'addadmin') {
+        if (interaction.guild.ownerId !== interaction.user.id) {
+            return interaction.reply({
+                content: '❌ Only the server owner can add bot administrators!',
+                ephemeral: true
+            });
+        }
+
+        const user = interaction.options.getUser('user');
+
+        if (config.botAdmins.includes(user.id)) {
+            return interaction.reply({
+                content: '❌ This user is already a bot administrator!',
+                ephemeral: true
+            });
+        }
+
+        config.botAdmins.push(user.id);
+        saveConfig();
+
+        await interaction.reply({
+            content: `✅ Added ${user.tag} as a bot administrator!`,
+            ephemeral: true
+        });
+    }
+
+    else if (commandName === 'removeadmin') {
+        if (interaction.guild.ownerId !== interaction.user.id) {
+            return interaction.reply({
+                content: '❌ Only the server owner can remove bot administrators!',
+                ephemeral: true
+            });
+        }
+
+        const user = interaction.options.getUser('user');
+        const index = config.botAdmins.indexOf(user.id);
+
+        if (index === -1) {
+            return interaction.reply({
+                content: '❌ This user is not a bot administrator!',
+                ephemeral: true
+            });
+        }
+
+        config.botAdmins.splice(index, 1);
+        saveConfig();
+
+        await interaction.reply({
+            content: `✅ Removed ${user.tag} from bot administrators!`,
+            ephemeral: true
+        });
+    }
+
+    else if (commandName === 'listadmins') {
+        if (config.botAdmins.length === 0) {
+            return interaction.reply({
+                content: '📋 No bot administrators configured!',
+                ephemeral: true
+            });
+        }
+
+        const admins = config.botAdmins.map(id => `<@${id}>`).join('\n');
+        
+        await interaction.reply({
+            content: `📋 **Bot Administrators:**\n${admins}`,
+            ephemeral: true
+        });
+    }
+
+    else if (commandName === 'botstatus') {
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
-            .setTitle('🤖 Retreat Gateway Bot')
+            .setTitle('🤖 Bot Status')
             .addFields(
-                {
-                    name: '🎮 Game Commands',
-                    value: '`/addgame` - Add game (with genre)\n`/removegame` - Remove your game\n`/customizegame` - Customize your game\n`/listgames` - List all\n`/cleargames` - Clear all\n`/checkgames` - Check for 773 errors',
-                    inline: false
-                },
-                {
-                    name: '📊 Info',
-                    value: '`/stats` - Statistics\n`/help` - This menu',
-                    inline: false
-                },
-                {
-                    name: '🔒 Admin',
-                    value: '`/setadmin` - Manage bot admins\n`/setroles` - Manage permissions\n`/setchannel` - Set bot channel',
-                    inline: false
-                },
-                {
-                    name: '🎯 Genres',
-                    value: '⚔️ Official | 🗡️ SwordFight | 🔫 Crim | 👋 Slap | 🐐 Goat',
-                    inline: false
-                },
-                {
-                    name: '🧹 Auto-Cleanup',
-                    value: 'Every 5 minutes, bot checks all games.\nGames that would give **Error 773** on teleport are automatically removed.',
-                    inline: false
-                }
-            )
-            .setFooter({ text: 'Retreat Gateway - Prevents 773 Teleport Errors' })
-            .setTimestamp();
-
-        return interaction.reply({ embeds: [embed] });
-    }
-
-    if (commandName === 'stats') {
-        const userStats = {};
-        const genreStats = {};
-        
-        games.forEach(game => {
-            userStats[game.addedBy] = (userStats[game.addedBy] || 0) + 1;
-            genreStats[game.genre] = (genreStats[game.genre] || 0) + 1;
-        });
-        
-        const topContributors = Object.entries(userStats)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map((entry, index) => `${index + 1}. **${entry[0]}** - ${entry[1]} game${entry[1] > 1 ? 's' : ''}`)
-            .join('\n');
-
-        const genreList = Object.entries(genreStats)
-            .map(([genre, count]) => `${GENRE_ICONS[genre] || '🎮'} **${genre}**: ${count}`)
-            .join('\n');
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00FF00)
-            .setTitle('📊 Hub Statistics')
-            .addFields(
-                {
-                    name: '🎮 Total Games',
-                    value: `${games.length}`,
-                    inline: true
-                },
-                {
-                    name: '👑 Top Contributors',
-                    value: topContributors || 'No games yet',
-                    inline: false
-                },
-                {
-                    name: '🎯 Games by Genre',
-                    value: genreList || 'No games yet',
-                    inline: false
-                }
+                { name: '🎮 Games', value: games.length.toString(), inline: true },
+                { name: '⏰ Uptime', value: formatUptime(client.uptime), inline: true },
+                { name: '👥 Permission Mode', value: config.allowEveryone ? 'Everyone' : 'Specific Roles', inline: true },
+                { name: '📢 Allowed Channel', value: config.allowedChannel ? `<#${config.allowedChannel}>` : 'Any Channel', inline: true },
+                { name: '🎭 Allowed Roles', value: config.allowedRoles.length > 0 ? config.allowedRoles.map(id => `<@&${id}>`).join(', ') : 'None', inline: false },
+                { name: '🔧 Bot Admins', value: config.botAdmins.length > 0 ? config.botAdmins.map(id => `<@${id}>`).join(', ') : 'None', inline: false }
             )
             .setTimestamp();
 
-        return interaction.reply({ embeds: [embed] });
-    }
-    
-                }
-            )
-            .setTimestamp();
-
-        return interaction.reply({ embeds: [embed] });
+        await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    if (commandName === 'setroles') {
-        const action = interaction.options.getString('action');
-        
-        if (action === 'add') {
-            const role = interaction.options.getRole('role');
-            
-            if (config.allowedRoles.includes(role.id)) {
-                return interaction.reply({
-                    content: `❌ Role ${role.name} already has permission!`,
-                    ephemeral: true
-                });
-            }
-            
-            config.allowedRoles.push(role.id);
-            saveConfig();
-            
-            return interaction.reply(`✅ Added ${role.name} to allowed roles!`);
-        }
-        
-        else if (action === 'remove') {
-            const role = interaction.options.getRole('role');
-            
-            const index = config.allowedRoles.indexOf(role.id);
-            if (index === -1) {
-                return interaction.reply({
-                    content: `❌ Role ${role.name} doesn't have permission!`,
-                    ephemeral: true
-                });
-            }
-            
-            config.allowedRoles.splice(index, 1);
-            saveConfig();
-            
-            return interaction.reply(`✅ Removed ${role.name}!`);
-        }
-        
-        else if (action === 'list') {
-            if (config.allowEveryone) {
-                return interaction.reply('📋 **Everyone** can manage games!');
-            }
-            
-            if (config.allowedRoles.length === 0) {
-                return interaction.reply('📋 No roles yet! Only server owner can manage.');
-            }
-            
-            const rolesList = config.allowedRoles
-                .map(roleId => {
-                    const role = interaction.guild.roles.cache.get(roleId);
-                    return role ? `• ${role.name}` : `• Unknown Role`;
-                })
-                .join('\n');
-            
-            const embed = new EmbedBuilder()
-                .setColor(0x0099FF)
-                .setTitle('🔒 Allowed Roles')
-                .setDescription(rolesList)
-                .setFooter({ text: 'Server owner always has permission' })
-                .setTimestamp();
-            
-            return interaction.reply({ embeds: [embed] });
-        }
-        
-        else if (action === 'everyone') {
-            const enable = interaction.options.getBoolean('enable');
-            config.allowEveryone = enable;
-            saveConfig();
-            
-            return interaction.reply(enable ? '✅ Everyone can now manage games!' : '✅ Restricted to roles only!');
-        }
-    }
+    // ═══════════════════════════════════════════════════════════
+    // 🎮 GAME COMMANDS
+    // ═══════════════════════════════════════════════════════════
 
-    if (commandName === 'addgame') {
-        const gameIdInput = interaction.options.getString('gameid');
+    else if (commandName === 'addgame') {
+        const gameInput = interaction.options.getString('gameid');
         const genre = interaction.options.getString('genre');
-        const gameId = extractGameId(gameIdInput);
+
+        const gameId = extractGameId(gameInput);
 
         if (!gameId) {
             return interaction.reply({
-                content: '❌ Invalid game ID!',
+                content: '❌ Invalid game ID or URL!',
                 ephemeral: true
             });
         }
@@ -1190,6 +1095,13 @@ client.on('interactionCreate', async interaction => {
     }
 
     else if (commandName === 'cleargames') {
+        if (!isBotAdmin(interaction.member)) {
+            return interaction.reply({
+                content: '❌ Only bot administrators can clear all games!',
+                ephemeral: true
+            });
+        }
+
         if (games.length === 0) {
             return interaction.reply({
                 content: '🔭 No games to clear!',
@@ -1279,7 +1191,7 @@ app.post('/api/report773', async (req, res) => {
 app.get('/', (req, res) => {
     res.json({ 
         message: 'Retreat Gateway Bot API',
-        endpoints: ['/api/games', '/api/health', '/api/test']
+        endpoints: ['/api/games', '/api/health', '/api/test', '/api/report773']
     });
 });
 
