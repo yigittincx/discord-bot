@@ -1,6 +1,7 @@
 {
   "name": "retreat-gateway-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Discord bot with Roblox 773 error detection",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
@@ -8,6 +9,10 @@
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "noblox.js": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
